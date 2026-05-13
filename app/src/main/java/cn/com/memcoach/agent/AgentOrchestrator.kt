@@ -58,7 +58,7 @@ class AgentOrchestrator(
         var totalDecodeTokens = 0
 
         // ─────── ReAct 主循环 ───────
-        while (round < MAX_ROUNDS) {
+        while (round < input.maxRounds) {
             round++
 
             // 发送思考开始事件
@@ -150,7 +150,7 @@ class AgentOrchestrator(
         // 超过最大轮次 → 强制结束
         emit(
             AgentEvent.Error(
-                "已达到最大推理轮次（$MAX_ROUNDS），请尝试更简洁的问题。"
+                "已达到最大推理轮次（${input.maxRounds}），请尝试更简洁的问题。"
             )
         )
     }
@@ -164,7 +164,7 @@ data class AgentInput(
     val conversationHistory: List<ConversationMessage> = emptyList(),  // 历史对话
     val context: AgentPromptContext,                     // 上下文（学情、记忆等）
     val modelOverride: String? = null,                   // 模型覆盖（可选）
-    val maxRounds: Int = MAX_ROUNDS                      // 最大轮次覆盖
+    val maxRounds: Int = 50                              // 最大轮次覆盖
 )
 
 /**

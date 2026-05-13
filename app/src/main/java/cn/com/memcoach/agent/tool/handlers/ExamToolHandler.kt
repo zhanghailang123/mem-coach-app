@@ -36,7 +36,7 @@ class ExamToolHandler(
     )
 
     override suspend fun execute(toolName: String, arguments: String): String {
-        val args = try { Json.parseToJsonElement(arguments).jsonObject } catch (_: Exception) { emptyMap<String, JsonElement>().toJsonObject() }
+        val args = try { Json.parseToJsonElement(arguments).jsonObject } catch (_: Exception) { JsonObject(emptyMap()) }
         return when (toolName) {
             "exam_question_search" -> searchQuestions(args)
             "exam_question_explain" -> explainQuestion(args)
@@ -250,8 +250,9 @@ class ExamToolHandler(
                 questionId = questionId,
                 userAnswer = if (correct) question.answer else "",
                 isCorrect = correct,
-                timeSpentSec = timeSpentSec,
-                studyMode = "practice",
+                timeSpentSeconds = timeSpentSec,
+                studyMode = StudyRecord.MODE_PRACTICE,
+                knowledgeId = knowledgeId,
                 createdAt = now
             )
         )
@@ -362,11 +363,13 @@ class ExamToolHandler(
         fun put(key: String, value: Int) = put(key, JsonPrimitive(value))
         fun put(key: String, value: Boolean) = put(key, JsonPrimitive(value))
         fun putNullable(key: String, value: String?) = put(key, value?.let { JsonPrimitive(it) } ?: JsonNull)
+        fun build(): JsonObject
     }
 
     interface JsonArrayBuilder {
         fun add(element: JsonElement)
         fun add(value: String) = add(JsonPrimitive(value))
+        fun build(): JsonArray
     }
 
     inner class JsonObjectBuilderImpl : JsonObjectBuilder {
@@ -377,7 +380,7 @@ class ExamToolHandler(
 
     inner class JsonArrayBuilderImpl : JsonArrayBuilder {
         private val list = mutableListOf<JsonElement>()
-        fun build(): JsonArray = JsonArray(list)
+        override fun build(): JsonArray = JsonArray(list)
         override fun add(element: JsonElement) { list.add(element) }
     }
 }

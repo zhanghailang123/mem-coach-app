@@ -6,8 +6,28 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import cn.com.memcoach.data.entity.StudyRecord
 
+/** 按学习模式统计的学习记录数量。 */
+data class StudyModeCount(
+    val studyMode: String,
+    val count: Int
+)
+
+/** 每日学习记录数量。 */
+data class DailyStudyCount(
+    val date: String,
+    val count: Int
+)
+
+/** 每日正确率统计。 */
+data class DailyAccuracy(
+    val date: String,
+    val total: Int,
+    val correct: Int
+)
+
 /**
  * 学习记录数据访问对象
+
  *
  * 记录用户每次做题的详细信息，支持按时间、科目、学习模式等维度统计分析。
  */
@@ -66,12 +86,13 @@ interface StudyRecordDao {
 
     /** 按学习模式统计数量 */
     @Query("""
-        SELECT study_mode, COUNT(*) as count 
+        SELECT study_mode AS studyMode, COUNT(*) as count 
         FROM study_records 
         WHERE user_id = :userId AND created_at >= :startTime
         GROUP BY study_mode
     """)
-    suspend fun getCountByMode(userId: String = "default", startTime: Long): List<Map<String, Any>>
+    suspend fun getCountByMode(userId: String = "default", startTime: Long): List<StudyModeCount>
+
 
     /** 获取最近 N 天的每日学习记录数（用于热力图） */
     @Query("""
@@ -81,7 +102,8 @@ interface StudyRecordDao {
         GROUP BY date
         ORDER BY date ASC
     """)
-    suspend fun getDailyCountSince(userId: String = "default", startTime: Long): List<Map<String, Any>>
+    suspend fun getDailyCountSince(userId: String = "default", startTime: Long): List<DailyStudyCount>
+
 
     /** 获取最近 N 天的每日正确率趋势 */
     @Query("""
@@ -94,7 +116,8 @@ interface StudyRecordDao {
         GROUP BY date
         ORDER BY date ASC
     """)
-    suspend fun getDailyAccuracySince(userId: String = "default", startTime: Long): List<Map<String, Any>>
+    suspend fun getDailyAccuracySince(userId: String = "default", startTime: Long): List<DailyAccuracy>
+
 
     /** 获取连续学习天数 */
     @Query("""

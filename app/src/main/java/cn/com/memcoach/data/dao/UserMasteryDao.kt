@@ -7,8 +7,15 @@ import androidx.room.Query
 import androidx.room.Transaction
 import cn.com.memcoach.data.entity.UserMastery
 
+/** 用户某科目的掌握度统计。 */
+data class SubjectProgress(
+    val total: Int,
+    val mastered: Int
+)
+
 /**
  * 用户掌握度数据访问对象
+
  *
  * 管理用户对每个知识点的掌握程度，支持 SM-2 间隔重复算法的复习排期查询。
  */
@@ -80,7 +87,8 @@ interface UserMasteryDao {
         INNER JOIN knowledge_nodes kn ON um.knowledge_id = kn.id
         WHERE um.user_id = :userId AND kn.subject = :subject
     """)
-    suspend fun getProgressBySubject(userId: String = "default", subject: String): Map<String, Int>
+    suspend fun getProgressBySubject(userId: String = "default", subject: String): SubjectProgress
+
 
     /** 插入或更新掌握度 */
     @Insert(onConflict = OnConflictStrategy.REPLACE)

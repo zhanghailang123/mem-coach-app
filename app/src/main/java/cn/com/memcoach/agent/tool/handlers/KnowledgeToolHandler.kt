@@ -125,7 +125,7 @@ class KnowledgeToolHandler(
         val filtered = if (keyword.isNotBlank()) {
             allNodes.filter {
                 it.name.contains(keyword, ignoreCase = true) ||
-                it.description.contains(keyword, ignoreCase = true)
+                (it.description?.contains(keyword, ignoreCase = true) == true)
             }
         } else {
             allNodes

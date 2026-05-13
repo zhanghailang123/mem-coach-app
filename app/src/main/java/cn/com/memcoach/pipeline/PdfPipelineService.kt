@@ -39,7 +39,7 @@ class PdfPipelineService(
         private const val TAG = "PdfPipelineService"
 
         /** LLM 结构化解析 System Prompt */
-        private const val STRUCTURING_SYSTEM_PROMPT = """
+        private val STRUCTURING_SYSTEM_PROMPT = """
 你是一个考研真题结构化工具。输入是从PDF提取的原始文本，输出是JSON格式的题目数据。
 
 ## 规则
@@ -103,7 +103,7 @@ class PdfPipelineService(
         var insertedQuestions: Int = 0,
         var duplicateQuestions: Int = 0,
         var errors: MutableList<String> = mutableListOf(),
-        val ocrUtil: PdfOcrUtil = PdfOcrUtil(context)  // 延迟用到时再初始化
+        val ocrUtil: PdfOcrUtil  // 延迟用到时再初始化
     )
 
     /**
@@ -125,7 +125,8 @@ class PdfPipelineService(
         val job = ParseJob(
             filePath = pdfFile.absolutePath,
             subject = subject,
-            year = year
+            year = year,
+            ocrUtil = PdfOcrUtil(context)
         )
         jobs[jobId] = job
 
@@ -341,7 +342,7 @@ $truncatedText
                 explanation = obj.optString("explanation", ""),
                 sourceFile = "",  // 由外层填充
                 sourcePage = 0,
-                tags = "",  // 由外层填充
+                knowledgeTags = "",  // 由外层填充
                 embedding = null,
                 createdAt = now,
                 updatedAt = now

@@ -15,7 +15,7 @@ class AppTheme {
       colorScheme: colorScheme,
       scaffoldBackgroundColor: const Color(0xFFF7F8FC),
       fontFamily: 'Roboto',
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation: 0,
         color: Colors.white,
         surfaceTintColor: Colors.white,
