@@ -1,0 +1,3 @@
+-keep class cn.com.memcoach.** { *; }
+-keep class com.google.mlkit.** { *; }
+-dontwarn com.google.mlkit.**
