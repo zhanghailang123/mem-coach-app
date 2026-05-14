@@ -24,6 +24,7 @@ replay_pid*
 
 # Android Studio / IntelliJ
 .idea/
+.codebuddy/
 *.iml
 *.ipr
 *.iws

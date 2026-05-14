@@ -124,7 +124,7 @@ class MemoryToolHandler(
     private suspend fun queryDueItems(args: JSONObject): String {
         val now = System.currentTimeMillis()
         val limit = args.optInt("limit", 10)
-        val subject = args.optString("subject", null)
+        val subject = args.optString("subject").takeIf { it.isNotBlank() }
 
         val dueItems = userMasteryDao.getDueForReview(now = now, limit = limit)
 

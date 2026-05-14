@@ -3,7 +3,7 @@ package cn.com.memcoach
 import cn.com.memcoach.agent.AgentOrchestrator
 import cn.com.memcoach.agent.AgentSystemPrompt
 import cn.com.memcoach.agent.AgentToolRouter
-import cn.com.memcoach.agent.llm.EchoAgentLlmClient
+import cn.com.memcoach.agent.llm.OpenAICompatibleAgentLlmClient
 import cn.com.memcoach.agent.tool.handlers.ExamToolHandler
 import cn.com.memcoach.agent.tool.handlers.KnowledgeToolHandler
 import cn.com.memcoach.agent.tool.handlers.MemoryToolHandler
@@ -37,9 +37,13 @@ class MainActivity : FlutterActivity() {
             register(MemoryToolHandler(database.userMasteryDao(), database.knowledgeNodeDao()))
             register(PDFToolHandler())
         }
+        val llmConfig = defaultLlmConfig()
         val orchestrator = AgentOrchestrator(
-            llmClient = EchoAgentLlmClient(),
-
+            llmClient = OpenAICompatibleAgentLlmClient(
+                baseUrl = llmConfig.baseUrl,
+                apiKey = llmConfig.apiKey,
+                defaultModel = llmConfig.defaultModel
+            ),
             toolRouter = toolRouter,
             systemPrompt = AgentSystemPrompt()
         )
@@ -70,7 +74,7 @@ class MainActivity : FlutterActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mem_coach/native")
             .setMethodCallHandler { call, result ->
-                val args = call.arguments as? Map<String, Any?> ?: emptyMap()
+                val args = call.arguments.toStringKeyMap()
                 activityScope.launch {
                     try {
                         result.success(bridge.handleMethodCall(call.method, args))
@@ -94,8 +98,27 @@ class MainActivity : FlutterActivity() {
         database.openHelper.writableDatabase
     }
 
+    private fun defaultLlmConfig(): LlmConfig = LlmConfig(
+        baseUrl = "https://token-plan-cn.xiaomimimo.com/v1",
+        apiKey = "tp-cs8d8m6mm5p27npmgzedhzutk8dadawugl6lzvp7ipn1ogwv",
+        defaultModel = "mimo-v2.5-pro"
+    )
+
+    private data class LlmConfig(
+        val baseUrl: String,
+        val apiKey: String,
+        val defaultModel: String
+    )
+
     override fun onDestroy() {
         activityScope.cancel()
         super.onDestroy()
     }
+}
+
+private fun Any?.toStringKeyMap(): Map<String, Any?> {
+    val source = this as? Map<*, *> ?: return emptyMap()
+    return source.mapNotNull { (key, value) ->
+        (key as? String)?.let { it to value }
+    }.toMap()
 }

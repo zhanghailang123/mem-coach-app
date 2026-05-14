@@ -176,11 +176,11 @@ class PDFToolHandler : ToolHandler {
         json.put("total_pages", job.totalPages)
         json.put("parsed_pages", job.parsedPages)
 
-        if (job.questions != null) {
-            json.put("questions", JSONObject(job.questions))
+        job.questions?.let { questions ->
+            json.put("questions", JSONObject(questions))
         }
-        if (job.error != null) {
-            json.put("error", job.error)
+        job.error?.let { error ->
+            json.put("error", error)
         }
 
         // 提示：当前为桩实现
