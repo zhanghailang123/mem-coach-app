@@ -31,41 +31,45 @@ class OpenAICompatibleAgentLlmClient(
         tools: List<Map<String, Any>>?,
         modelId: String?,
         onChunk: suspend (LlmStreamChunk) -> Unit
-    ): LlmTurnResult = withContext(Dispatchers.IO) {
-        var response: HttpURLConnection? = null
-        try {
-            response = postChat(messages, tools, modelId, stream = true)
-            val content = StringBuilder()
-            val toolCalls = mutableMapOf<Int, ToolCallBuilder>()
-            var finishReason: String? = null
-            var usage: LlmTokenUsage? = null
+    ): LlmTurnResult {
+        return withContext(Dispatchers.IO) {
+            var response: HttpURLConnection? = null
+            try {
+                response = postChat(messages, tools, modelId, stream = true)
+                val content = StringBuilder()
+                val toolCalls = mutableMapOf<Int, ToolCallBuilder>()
+                var finishReason: String? = null
+                var usage: LlmTokenUsage? = null
 
-            BufferedReader(InputStreamReader(response.inputStream)).useLines { lines ->
-                lines.forEach { line ->
-                    val chunk = parseStreamLine(line, toolCalls) ?: return@forEach
+                val reader = BufferedReader(InputStreamReader(response.inputStream))
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    val currentLine = line ?: continue
+                    val chunk = parseStreamLine(currentLine, toolCalls) ?: continue
                     chunk.usage?.let { usage = it }
                     chunk.finishReason?.let { finishReason = it }
                     chunk.content?.let { content.append(it) }
                     onChunk(chunk)
                 }
+
+                LlmTurnResult(
+                    content = content.toString(),
+                    toolCalls = toolCalls.toSortedMap().values.mapNotNull { it.toToolCallOrNull() },
+                    finishReason = finishReason,
+                    modelId = modelId ?: defaultModel,
+                    usage = usage
+                )
+            } catch (e: Exception) {
+                val message = friendlyError(e)
+                onChunk(LlmStreamChunk(content = "\n[$message]", finishReason = "error"))
+                LlmTurnResult(
+                    content = "\n[$message]",
+                    finishReason = "error",
+                    modelId = modelId ?: defaultModel
+                )
+            } finally {
+                response?.disconnect()
             }
-            LlmTurnResult(
-                content = content.toString(),
-                toolCalls = toolCalls.toSortedMap().values.mapNotNull { it.toToolCallOrNull() },
-                finishReason = finishReason,
-                modelId = modelId ?: defaultModel,
-                usage = usage
-            )
-        } catch (e: Exception) {
-            val message = friendlyError(e)
-            onChunk(LlmStreamChunk(content = "\n[$message]", finishReason = "error"))
-            LlmTurnResult(
-                content = "\n[$message]",
-                finishReason = "error",
-                modelId = modelId ?: defaultModel
-            )
-        } finally {
-            response?.disconnect()
         }
     }
 

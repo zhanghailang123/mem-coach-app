@@ -153,7 +153,7 @@ class AgentOrchestrator(
                 "已达到最大推理轮次（${input.maxRounds}），请尝试更简洁的问题。"
             )
         )
-    }
+    }.kotlinx.coroutines.flow.flowOn(kotlinx.coroutines.Dispatchers.IO)
 }
 
 /**
