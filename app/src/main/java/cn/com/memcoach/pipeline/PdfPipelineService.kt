@@ -5,8 +5,7 @@ import cn.com.memcoach.agent.AgentLlmClient
 import cn.com.memcoach.agent.ChatMessage
 import cn.com.memcoach.data.dao.ExamQuestionDao
 import cn.com.memcoach.data.entity.ExamQuestion
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -43,9 +42,10 @@ class PdfPipelineService(
 2. 选择题提取选项（A/B/C/D），填空题标注空白处 [___]，解答题保留完整题干
 3. 如果题目引用图表，标注 [图片:描述]
 4. 尽量推断知识点分类和难度
-5. 答案和解析如果原文有就提取，没有留空
+5. 答案和解析如果原文有就提取，没有留空，严禁根据常识或模型知识补答案
 6. 输出严格JSON数组格式，不要任何前缀或后缀文字
 7. **特别注意**：对于结构化提取任务，不受科目限制，请照常解析数学、英语或任何其他科目的题目。
+8. 必须返回 source_page、source_text、confidence、parse_notes，方便后续校对。
 
 ## 输出格式
 [{
@@ -58,7 +58,11 @@ class PdfPipelineService(
     "stem": "题干内容...",
     "options": {"A":"选项A","B":"选项B","C":"选项C","D":"选项D"},
     "answer": "B",
-    "explanation": "解析内容..."
+    "explanation": "解析内容...",
+    "source_page": 12,
+    "source_text": "原文证据片段...",
+    "confidence": 0.86,
+    "parse_notes": ""
 }]
 """.trimIndent()
     }
@@ -195,6 +199,8 @@ class PdfPipelineService(
                 updateProgress(50)
             }
 
+            rawText = normalizeExtractedText(rawText)
+
             if (rawText.isBlank()) {
                 callback?.onError("PDF 文本提取失败，未获取到任何文字内容")
                 updateStep("error")
@@ -205,43 +211,67 @@ class PdfPipelineService(
             // ─── Step 3: LLM 结构化解析 ───
             updateStep("structuring")
 
-            val chunks = chunkText(rawText, 4000)
+            // 优先按题号切为候选题块，减少跨题串题；候选不足时回退到页分块。
+            val candidateBlocks = splitQuestionCandidates(rawText)
+            val batches = if (candidateBlocks.size >= 2) {
+                candidateBlocks.chunked(4).map { it.joinToString("\n\n--- 下一题 ---\n\n") }
+            } else {
+                chunkByPages(rawText, pagesPerBatch = 2, overlapChars = 500)
+            }
             val allQuestions = mutableListOf<ExamQuestion>()
 
-            for ((index, chunk) in chunks.withIndex()) {
-                callback?.onMessage("AI 正在解析题目结构 (第 ${index + 1}/${chunks.size} 批)...")
-                updateProgress(50 + (index * 25 / chunks.size.coerceAtLeast(1)))
-
-                var structuredJson = ""
-                var lastError: Exception? = null
-                
-                // 增加重试机制：最多 3 次
-                for (attempt in 1..3) {
-                    try {
-                        structuredJson = parseWithLLM(chunk, subject, year)
-                        if (structuredJson.startsWith("[LLM 请求失败")) {
-                            throw Exception(structuredJson.removeSurrounding("[", "]"))
+            // 并发处理（最大并发 3）
+            coroutineScope {
+                val deferredResults = batches.mapIndexed { index, batchText ->
+                    async(Dispatchers.IO) {
+                        var structuredJson = ""
+                        var lastError: Exception? = null
+                        
+                        // 增加重试机制：最多 3 次
+                        for (attempt in 1..3) {
+                            try {
+                                structuredJson = parseWithLLM(batchText, subject, year)
+                                if (structuredJson.startsWith("[LLM 请求失败")) {
+                                    throw Exception(structuredJson.removeSurrounding("[", "]"))
+                                }
+                                break 
+                            } catch (e: Exception) {
+                                lastError = e
+                                if (attempt < 3) {
+                                    delay(2000L * attempt)
+                                }
+                            }
                         }
-                        break // 成功则跳出重试循环
-                    } catch (e: Exception) {
-                        lastError = e
-                        if (attempt < 3) {
-                            callback?.onMessage("解析第 ${index + 1} 批失败，正在进行第 $attempt 次重试...")
-                            kotlinx.coroutines.delay(2000L * attempt) // 指数退避
+
+                        if (structuredJson.isBlank() || structuredJson.startsWith("[LLM 请求失败")) {
+                            null
+                        } else {
+                            try {
+                                // 注入 batch 索引以保持 ID 唯一且有序
+                                parseQuestionJson(
+                                    structuredJson,
+                                    subject,
+                                    year,
+                                    sourceFile = pdfFile.name,
+                                    batchText = batchText,
+                                    batchIndex = index
+                                )
+                            } catch (e: Exception) {
+                                null
+                            }
                         }
                     }
                 }
 
-                if (structuredJson.isBlank() || structuredJson.startsWith("[LLM 请求失败")) {
-                    job.errors.add("Batch ${index + 1} 解析彻底失败: ${lastError?.message}")
-                    continue // 跳过这一批，继续下一批，尽量挽救
-                }
-
-                try {
-                    val batchQuestions = parseQuestionJson(structuredJson, subject, year)
-                    allQuestions.addAll(batchQuestions)
-                } catch (e: Exception) {
-                    job.errors.add("Batch ${index + 1} JSON 解析异常: ${e.message}")
+                // awaitAll 保证结果顺序与 batches 顺序一致
+                deferredResults.awaitAll().forEachIndexed { index, batchQuestions ->
+                    if (batchQuestions != null) {
+                        allQuestions.addAll(batchQuestions)
+                        // 更新进度：50% + 每批次的占比
+                        updateProgress(50 + ((index + 1) * 35 / batches.size.coerceAtLeast(1)))
+                    } else {
+                        job.errors.add("第 ${index + 1} 批解析失败")
+                    }
                 }
             }
 
@@ -353,7 +383,14 @@ class PdfPipelineService(
 
 $chunkText
 
-请将以上文本解析为结构化题目 JSON 数组。
+请将以上文本解析为结构化题目 JSON 数组。要求：
+1. 只抽取文本中明确出现的题目，不要编造题干、答案或解析。
+2. 如果答案或解析未在文本中明确出现，对应字段必须返回空字符串。
+3. 选择题必须尽量保留 A/B/C/D 选项；选项缺失时仍可返回，但 confidence 需要降低。
+4. source_page 填题目最可能来自的页码；无法判断填 0。
+5. source_text 填支持该题的原始片段，最多 800 字。
+6. confidence 返回 0 到 1；OCR 乱码、题干不完整、选项不完整或答案不确定时低于 0.7。
+7. parse_notes 简短说明不确定原因；确定时可为空。
 """.trimIndent()
 
         val messages = listOf(
@@ -383,7 +420,94 @@ $chunkText
             }
         }
 
-        return content
+        return extractJsonArray(content)
+    }
+
+    private fun extractJsonArray(content: String): String {
+        val start = content.indexOf('[')
+        val end = content.lastIndexOf(']')
+        return if (start >= 0 && end > start) content.substring(start, end + 1).trim() else content
+    }
+
+    private fun normalizeExtractedText(text: String): String {
+        if (text.isBlank()) return ""
+        return text
+            .replace('\u00A0', ' ')
+            .replace('—', '-')
+            .replace('－', '-')
+            .replace('（', '(')
+            .replace('）', ')')
+            .replace('．', '.')
+            .replace('。', '.')
+            .replace(Regex("[\\t\\x0B\\f\\r]+"), " ")
+            .lines()
+            .map { it.trim() }
+            .filter { line ->
+                line.isNotBlank() &&
+                    !line.matches(Regex("""^[-_ ]*$""")) &&
+                    !line.matches(Regex("""^第?\s*\d+\s*[页頁]$""")) &&
+                    !line.matches(Regex("""^\d+\s*/\s*\d+$"""))
+            }
+            .joinToString("\n")
+            .replace(Regex("([.!?！？；;：:])\\n(?=[^A-DＡ-Ｄa-dａ-ｄ①②③④(【])"), "$1")
+            .replace(Regex("\\n{3,}"), "\n\n")
+            .trim()
+    }
+
+    private fun splitQuestionCandidates(text: String): List<String> {
+        val marker = Regex(
+            """(?m)^(?:=== 第 \d+ 页 ===\s*)?(?:第\s*)?(?:[0-9]{1,3}|[一二三四五六七八九十百]{1,4})[\.、)]\s*|^\s*\(([0-9]{1,3})\)\s+"""
+        )
+        val matches = marker.findAll(text).toList()
+        if (matches.size < 2) return emptyList()
+
+        return matches.mapIndexedNotNull { index, match ->
+            val start = match.range.first
+            val end = matches.getOrNull(index + 1)?.range?.first ?: text.length
+            text.substring(start, end)
+                .trim()
+                .takeIf { candidate ->
+                    candidate.length >= 30 &&
+                        !candidate.contains(Regex("""(?m)^\s*(参考答案|答案解析|答案|解析)\s*[:：]?\s*$"""))
+                }
+        }
+    }
+
+    /**
+     * 智能切片：按页分组，并增加重叠
+     */
+    private fun chunkByPages(text: String, pagesPerBatch: Int, overlapChars: Int): List<String> {
+        val pageMarker = Regex("""=== 第 (\d+) 页 ===""")
+        val pages = text.split(pageMarker).filter { it.isNotBlank() }
+        val markers = pageMarker.findAll(text).toList()
+        
+        if (pages.isEmpty()) return listOf(text)
+
+        val result = mutableListOf<String>()
+        var i = 0
+        while (i < pages.size) {
+            val batchBuilder = StringBuilder()
+            
+            // 如果不是第一批，先塞入上一批末尾的重叠内容
+            if (i > 0) {
+                val prevPage = pages[i - 1]
+                val overlap = if (prevPage.length > overlapChars) prevPage.takeLast(overlapChars) else prevPage
+                batchBuilder.append("... [接上一页末尾] ...\n").append(overlap).append("\n\n")
+            }
+
+            // 塞入当前批次的页内容
+            val end = minOf(i + pagesPerBatch, pages.size)
+            for (j in i until end) {
+                if (j < markers.size) {
+                    batchBuilder.append(markers[j].value).append("\n")
+                }
+                batchBuilder.append(pages[j]).append("\n")
+            }
+            
+            result.add(batchBuilder.toString())
+            i += pagesPerBatch
+        }
+        return result
     }
 
     private fun chunkText(text: String, chunkSize: Int): List<String> {
@@ -401,29 +525,61 @@ $chunkText
     /**
      * 将 LLM 返回的 JSON 数组解析为 ExamQuestion 列表。
      */
-    private fun parseQuestionJson(jsonStr: String, subject: String, year: Int): List<ExamQuestion> {
+    private fun parseQuestionJson(
+        jsonStr: String,
+        subject: String,
+        year: Int,
+        sourceFile: String,
+        batchText: String,
+        batchIndex: Int = 0
+    ): List<ExamQuestion> {
         val jsonArray = JSONArray(jsonStr)
         val questions = mutableListOf<ExamQuestion>()
 
         for (i in 0 until jsonArray.length()) {
             val obj = jsonArray.getJSONObject(i)
             val now = System.currentTimeMillis()
+            val stem = obj.optString("stem", "").trim()
+            if (stem.length < 12) continue
 
+            val normalizedStem = normalizeForHash(stem)
+            val stemHash = sha256(normalizedStem)
+            val options = obj.optJSONObject("options")?.toString()
+            val confidence = obj.optDouble("confidence", estimateConfidence(stem, options, obj.optString("answer", ""))).toFloat().coerceIn(0f, 1f)
+            val sourceText = obj.optString("source_text", "")
+                .takeIf { it.isNotBlank() && it != "null" }
+                ?: batchText.take(800)
+            val parseNotes = obj.optString("parse_notes", "")
+                .takeIf { it.isNotBlank() && it != "null" }
+                ?: buildParseNotes(stem, options, confidence)
+            val parseStatus = when {
+                confidence < 0.55f -> "needs_review"
+                parseNotes != null -> "needs_review"
+                else -> "parsed"
+            }
+
+            val fallbackId = "${subject}_${year}_${batchIndex + 1}_${i + 1}_${stemHash.take(12)}"
             val question = ExamQuestion(
-                id = obj.optString("id", "${subject}_${year}_$i"),
+                id = obj.optString("id", "").takeIf { it.isNotBlank() && it != "null" }
+                    ?: fallbackId,
                 year = obj.optInt("year", year),
                 subject = obj.optString("subject", subject),
                 chapter = obj.optString("chapter", ""),
                 topic = obj.optString("topic", ""),
                 type = obj.optString("type", "choice"),
                 difficulty = obj.optString("difficulty", "medium"),
-                stem = obj.optString("stem", ""),
-                options = obj.optJSONObject("options")?.toString(),
+                stem = stem,
+                options = options,
                 answer = obj.optString("answer", ""),
                 explanation = obj.optString("explanation", ""),
-                sourceFile = "",  // 由外层填充
-                sourcePage = 0,
-                knowledgeTags = "",  // 由外层填充
+                sourceFile = sourceFile,
+                sourcePage = obj.optInt("source_page", 0),
+                knowledgeTags = obj.optJSONArray("knowledge_tags")?.toString() ?: "",
+                sourceText = sourceText.take(1200),
+                stemHash = stemHash,
+                parseConfidence = confidence,
+                parseStatus = parseStatus,
+                parseNotes = parseNotes,
                 embedding = null,
                 createdAt = now,
                 updatedAt = now
@@ -432,6 +588,30 @@ $chunkText
         }
 
         return questions
+    }
+
+    private fun normalizeForHash(text: String): String {
+        return text.lowercase()
+            .replace(Regex("""\s+"""), "")
+            .replace(Regex("""[，。！？；：,.!?;:\"'“”‘’（）()【】\[\]{}<>《》]"""), "")
+            .trim()
+    }
+
+    private fun estimateConfidence(stem: String, options: String?, answer: String): Double {
+        var score = 0.72
+        if (stem.length < 30) score -= 0.18
+        if (options.isNullOrBlank()) score -= 0.12
+        if (answer.isBlank() || answer == "null") score -= 0.08
+        if (stem.contains("�") || stem.count { it == '?' || it == '？' } >= 4) score -= 0.16
+        return score.coerceIn(0.25, 0.95)
+    }
+
+    private fun buildParseNotes(stem: String, options: String?, confidence: Float): String? {
+        val notes = mutableListOf<String>()
+        if (stem.length < 30) notes.add("题干偏短")
+        if (options.isNullOrBlank()) notes.add("选项缺失或无法识别")
+        if (confidence < 0.55f) notes.add("解析置信度较低")
+        return notes.takeIf { it.isNotEmpty() }?.joinToString("；")
     }
 
     /**
@@ -444,23 +624,36 @@ $chunkText
         val newQuestions = mutableListOf<ExamQuestion>()
         var duplicateCount = 0
 
+        val seenStemHashes = mutableSetOf<String>()
         for (question in questions) {
+            val stemHash = question.stemHash ?: sha256(normalizeForHash(question.stem))
+            if (!seenStemHashes.add(stemHash)) {
+                duplicateCount++
+                continue
+            }
+
             // 精确匹配：检查相同 ID 是否已存在
-            val existing = try {
+            val existingById = try {
                 questionDao.getById(question.id)
             } catch (e: Exception) {
                 null
             }
 
-            if (existing != null) {
+            if (existingById != null) {
                 duplicateCount++
                 continue
             }
 
-            // 计算 stem hash 用于后续快速查重
-            val stemHash = sha256(question.stem)
-            // 简单去重：如果 stem 完全相同则跳过（需要遍历已插入的题目）
-            // 当前简化：仅通过 ID 去重，更复杂的语义去重在后续版本实现
+            val existingByStemHash = try {
+                questionDao.countByStemHashAndSubject(stemHash, question.subject) > 0
+            } catch (e: Exception) {
+                questionDao.countByStemAndSubject(question.stem, question.subject) > 0
+            }
+
+            if (existingByStemHash) {
+                duplicateCount++
+                continue
+            }
 
             newQuestions.add(question)
         }
@@ -475,6 +668,15 @@ $chunkText
         val digest = MessageDigest.getInstance("SHA-256")
         val hashBytes = digest.digest(input.toByteArray())
         return hashBytes.joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * 获取所有活跃（未完成且未报错）的任务 ID
+     */
+    fun getActiveJobIds(): List<String> {
+        return jobs.filter { (_, job) -> 
+            job.status != "done" && job.status != "error" && job.status != "cancelled"
+        }.keys.toList()
     }
 
     /**

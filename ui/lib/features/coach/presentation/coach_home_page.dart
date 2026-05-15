@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/native/mem_coach_native_bridge.dart';
+import '../../settings/presentation/settings_page.dart';
 import '../widgets/chat_sheet.dart';
 import '../widgets/coach_shell_card.dart';
 import '../widgets/quick_action_grid.dart';
@@ -106,42 +107,45 @@ class _CoachHomePageState extends State<CoachHomePage> {
                 slivers: [
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
                       child: _Header(data: data),
                     ),
                   ),
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                      child: _CoachBriefing(data: data, isLoading: isLoading),
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                      child: _ChatHeroCard(data: data, isLoading: isLoading),
                     ),
                   ),
                   const SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
+                      padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
+                      child: _ContextSectionTitle(),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(20, 14, 20, 0),
                       child: StudyMissionCard(),
-                    ),
-                  ),
-                  const SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
-                      child: QuickActionGrid(),
                     ),
                   ),
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                      child: _KnowledgeOverviewCard(data: data),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
                       child: _InsightStrip(data: data),
                     ),
                   ),
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                        child: _ChatTriggerBar(),
-                      ),
+
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(20, 28, 20, 40),
+                      child: QuickActionGrid(),
                     ),
                   ),
                 ],
@@ -167,30 +171,31 @@ class _Header extends StatelessWidget {
     return Row(
       children: [
         Container(
-          width: 48,
-          height: 48,
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               colors: [Color(0xFF5B5FEF), Color(0xFF20B486)],
             ),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(15),
           ),
-          child: const Icon(Icons.auto_awesome_rounded, color: Colors.white),
+          child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 21),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('MEM Coach', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 2),
+              const Text('MEM Coach', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 1),
               Text(
                 [if (examText.isNotEmpty) examText, streakText].join(' · '),
-                style: const TextStyle(color: Colors.black54),
+                style: const TextStyle(color: Colors.black54, fontSize: 12.5),
               ),
             ],
           ),
         ),
+
         IconButton.filledTonal(
           onPressed: () {
             showDialog(
@@ -209,13 +214,25 @@ class _Header extends StatelessWidget {
           },
           icon: const Icon(Icons.notifications_none_rounded),
         ),
+        const SizedBox(width: 8),
+        IconButton.filledTonal(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const SettingsPage(),
+              ),
+            );
+          },
+          icon: const Icon(Icons.settings_outlined),
+        ),
       ],
     );
   }
 }
 
-class _CoachBriefing extends StatelessWidget {
-  const _CoachBriefing({required this.data, required this.isLoading});
+class _ChatHeroCard extends StatelessWidget {
+  const _ChatHeroCard({required this.data, required this.isLoading});
 
   final HomeData data;
   final bool isLoading;
@@ -226,7 +243,199 @@ class _CoachBriefing extends StatelessWidget {
         ? '正在分析你的学习数据...'
         : data.briefing.isNotEmpty
             ? data.briefing
-            : '欢迎回来！点击下方开始你的学习之旅。';
+            : '告诉我你的目标，我会把真题、知识点和复习节奏串起来。';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFF),
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: const Color(0xFFE9ECFF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.auto_awesome_rounded, color: Theme.of(context).colorScheme.primary, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_getGreeting(), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black54)),
+                    const SizedBox(height: 1),
+                    Text(
+                      briefingText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.black38, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+          GestureDetector(
+            onTap: () => ChatSheet.show(context),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(24, 26, 16, 26),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.12)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                    blurRadius: 36,
+                    offset: const Offset(0, 16),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.06),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.chat_bubble_outline_rounded, color: Theme.of(context).colorScheme.primary, size: 22),
+                  ),
+                  const SizedBox(width: 16),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('从一次对话开始', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.black87, letterSpacing: -0.5)),
+                        SizedBox(height: 4),
+                        Text('问我：今天该怎么学？', style: TextStyle(color: Colors.black38, fontSize: 13.5)),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF5B5FEF), Color(0xFF20B486)],
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(color: Color(0x405B5FEF), blurRadius: 10, offset: Offset(0, 4)),
+                      ],
+                    ),
+                    child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 22),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text('你可以这样问', style: TextStyle(fontSize: 11, color: Colors.black26, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: const [
+              _PromptChip(label: '我今天只有 20 分钟', prompt: '帮我安排今天 20 分钟 MEM 学习计划'),
+              _PromptChip(label: '帮我复盘错题', prompt: '根据我的错题和学习记录，帮我复盘当前最需要补的知识点'),
+              _PromptChip(label: '出 3 道逻辑题', prompt: '给我 3 道逻辑题练习，并在我答完后讲解思路'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 6) return '夜深了，先轻量复盘。';
+    if (hour < 12) return '上午好，开启一次高效学习。';
+    if (hour < 14) return '中午好，适合做 3 道微练习。';
+    if (hour < 18) return '下午好，把薄弱点补一补。';
+    if (hour < 22) return '晚上好，复习正当时。';
+    return '夜深了，先轻量复盘。';
+  }
+}
+
+class _PromptChip extends StatelessWidget {
+  const _PromptChip({required this.label, required this.prompt});
+
+  final String label;
+  final String prompt;
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      label: Text(label),
+      avatar: const Icon(Icons.bolt_rounded, size: 16, color: Color(0xFF5B5FEF)),
+      onPressed: () => ChatSheet.show(context, initialText: prompt),
+      backgroundColor: Colors.white.withOpacity(0.94),
+      side: BorderSide(color: Colors.white.withOpacity(0.45)),
+      labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.black87),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+    );
+
+  }
+}
+
+class _ContextSectionTitle extends StatelessWidget {
+  const _ContextSectionTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 7,
+          height: 24,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primary,
+            borderRadius: BorderRadius.circular(999),
+          ),
+        ),
+        const SizedBox(width: 10),
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('AI 已结合这些学习上下文', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+              SizedBox(height: 2),
+              Text('任务、知识图谱和练习数据会进入你的对话决策。', style: TextStyle(fontSize: 12.5, color: Colors.black54)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _KnowledgeOverviewCard extends StatelessWidget {
+
+  const _KnowledgeOverviewCard({required this.data});
+
+  final HomeData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = data.totalKnowledgeCount;
+    final mastered = data.masteredCount.clamp(0, total == 0 ? data.masteredCount : total);
+    final progress = total > 0 ? mastered / total : 0.0;
+    final weakLabels = data.weakPoints
+        .map((item) => item['name']?.toString() ?? item['title']?.toString() ?? item['knowledge_name']?.toString() ?? '')
+        .where((name) => name.isNotEmpty && name != 'null')
+        .take(3)
+        .toList();
 
     return CoachShellCard(
       child: Column(
@@ -235,66 +444,68 @@ class _CoachBriefing extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(Icons.smart_toy_rounded, color: Theme.of(context).colorScheme.primary),
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: const Color(0xFF5B5FEF).withOpacity(0.10), borderRadius: BorderRadius.circular(15)),
+                child: const Icon(Icons.account_tree_rounded, color: Color(0xFF5B5FEF)),
               ),
               const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _getGreeting(),
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('知识体系', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                    SizedBox(height: 2),
+                    Text('由对话、真题和复习记录持续生成', style: TextStyle(fontSize: 12.5, color: Colors.black54)),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Text(
-            briefingText,
-            style: const TextStyle(fontSize: 15.5, height: 1.55, color: Colors.black87),
+          const SizedBox(height: 16),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress.clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: Colors.black.withOpacity(0.06),
+              color: const Color(0xFF20B486),
+            ),
           ),
-          if (!isLoading && data.dueReviewCount > 0) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF3E0),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.schedule_rounded, size: 16, color: Color(0xFFE65100)),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${data.dueReviewCount} 个知识点待复习',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFFE65100),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
+          const SizedBox(height: 10),
+          Text(
+            total > 0 ? '已掌握 $mastered / $total 个知识节点' : '开始对话或导入真题后，会逐步生成你的知识地图。',
+            style: const TextStyle(fontSize: 13.5, color: Colors.black87, fontWeight: FontWeight.w600),
+          ),
+          if (weakLabels.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: weakLabels.map((name) => _WeakPointChip(name: name)).toList(),
             ),
           ],
         ],
       ),
     );
   }
+}
 
-  String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 6) return '夜深了，注意休息。';
-    if (hour < 12) return '上午好，准备好学习了吗？';
-    if (hour < 14) return '中午好，适当休息一下。';
-    if (hour < 18) return '下午好，继续加油！';
-    if (hour < 22) return '晚上好，复习好时机。';
-    return '夜深了，注意休息。';
+class _WeakPointChip extends StatelessWidget {
+  const _WeakPointChip({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3E0),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(name, style: const TextStyle(fontSize: 12.5, color: Color(0xFFE65100), fontWeight: FontWeight.w700)),
+    );
   }
 }
 
@@ -368,58 +579,5 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
-/// 聊天触发条 - 点击后打开全屏聊天 Sheet
-class _ChatTriggerBar extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => ChatSheet.show(context),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.black.withOpacity(0.06)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.auto_awesome_rounded,
-              color: Theme.of(context).colorScheme.primary,
-              size: 22,
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                '问我：今天该怎么学？',
-                style: TextStyle(
-                  color: Colors.black38,
-                  fontSize: 15,
-                ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.arrow_upward_rounded,
-                color: Colors.white,
-                size: 20,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+
+

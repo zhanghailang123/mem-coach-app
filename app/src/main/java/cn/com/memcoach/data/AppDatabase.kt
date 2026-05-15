@@ -35,7 +35,7 @@ import cn.com.memcoach.data.entity.*
         ConversationEntity::class,
         ChatMessageEntity::class
     ],
-    version = 4,
+    version = 5,
 
     exportSchema = false  // MVP 阶段不导出 schema，后续可开启
 )
@@ -136,6 +136,23 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         /**
+         * 从版本 4 升级到版本 5 的 Migration。
+         *
+         * 为 PDF 题目解析补充质量控制和来源追溯字段。
+         */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `exam_questions` ADD COLUMN `source_text` TEXT")
+                database.execSQL("ALTER TABLE `exam_questions` ADD COLUMN `stem_hash` TEXT")
+                database.execSQL("ALTER TABLE `exam_questions` ADD COLUMN `parse_confidence` REAL NOT NULL DEFAULT 0.5")
+                database.execSQL("ALTER TABLE `exam_questions` ADD COLUMN `parse_status` TEXT NOT NULL DEFAULT 'parsed'")
+                database.execSQL("ALTER TABLE `exam_questions` ADD COLUMN `parse_notes` TEXT")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_questions_stem_hash` ON `exam_questions` (`stem_hash`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_questions_parse_status` ON `exam_questions` (`parse_status`)")
+            }
+        }
+
+        /**
          * 获取数据库单例
 
          *
@@ -154,7 +171,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 DATABASE_NAME
             )
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 
                 // MVP 阶段使用 destructive migration 作为兜底，开发中重建数据库
                 // 正式发布后改用 Migration 策略

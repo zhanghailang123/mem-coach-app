@@ -129,10 +129,14 @@ class _QuestionCardState extends State<QuestionCard> {
         questionId: widget.question.id,
         userAnswer: selected!,
       );
+      final error = answerResult['error']?.toString();
+      if (error != null && error.isNotEmpty && error != 'null') {
+        throw Exception(error);
+      }
 
       final answerResultObj = AnswerResult(
         correct: answerResult['correct'] == true,
-        correctAnswer: answerResult['correct_answer']?.toString() ?? '',
+        correctAnswer: answerResult['correct_answer']?.toString() ?? widget.question.answer ?? '',
         explanation: answerResult['explanation']?.toString(),
         hint: answerResult['hint']?.toString(),
         masteryLevel: answerResult['mastery_level']?.toString(),
@@ -150,11 +154,20 @@ class _QuestionCardState extends State<QuestionCard> {
       if (mounted) {
         setState(() => _loading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('提交失败：$e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('提交失败：${_friendlySubmitError(e)}'), backgroundColor: Colors.red),
         );
       }
     }
   }
+
+  String _friendlySubmitError(Object error) {
+    final message = error.toString();
+    if (message.contains('question not found')) return '题目不存在，请返回后重新加载题目';
+    if (message.contains('question_id required')) return '题目 ID 缺失，请重新进入练习';
+    if (message.contains('user_answer required')) return '答案为空，请重新选择选项';
+    return message.replaceFirst('Exception: ', '');
+  }
+
 
   void _handleUncertain() {
     widget.onUncertain?.call(widget.question);
@@ -287,6 +300,13 @@ class _QuestionCardState extends State<QuestionCard> {
             Row(
               children: [
                 Expanded(
+                  child: OutlinedButton(
+                    onPressed: _loading ? null : _handleUncertain,
+                    child: const Text('不确定'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
                   child: FilledButton(
                     onPressed: selected == null || _loading ? null : _submit,
                     child: _loading
@@ -294,15 +314,9 @@ class _QuestionCardState extends State<QuestionCard> {
                         : const Text('提交'),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _loading ? null : _handleUncertain,
-                    child: const Text('不确定'),
-                  ),
-                ),
               ],
             )
+
           else
             SizedBox(
               width: double.infinity,

@@ -81,63 +81,74 @@ class _StudyMissionCardState extends State<StudyMissionCard> {
     final m = _mission;
 
     return CoachShellCard(
+      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
                   '今日主线任务',
-                  style: TextStyle(color: color, fontWeight: FontWeight.w700),
+                  style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 13),
                 ),
               ),
               const Spacer(),
-              Text('预计 ${m.estimatedMinutes} 分钟', style: const TextStyle(color: Colors.black54)),
+              Text('预计 ${m.estimatedMinutes} 分钟', style: const TextStyle(color: Colors.black54, fontSize: 13)),
             ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 22),
           Text(
             m.title,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
             m.subtitle,
-            style: const TextStyle(color: Colors.black54),
+            style: const TextStyle(color: Colors.black54, fontSize: 14),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 22),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
-              minHeight: 9,
+              minHeight: 10,
               value: m.progress,
-              backgroundColor: Colors.grey.shade200,
+              backgroundColor: Colors.black.withOpacity(0.05),
+              color: color,
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 24),
           Row(
             children: [
               Expanded(
                 child: FilledButton.icon(
                   onPressed: _startPractice,
-                  icon: const Icon(Icons.play_arrow_rounded),
+                  icon: const Icon(Icons.play_arrow_rounded, size: 20),
                   label: const Text('开始练习'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: _loadingQuick ? null : _quickPractice,
                   icon: _loadingQuick
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.flash_on_rounded),
+                      : const Icon(Icons.flash_on_rounded, size: 18),
                   label: const Text('极速 3 题'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: BorderSide(color: color.withOpacity(0.2)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
                 ),
               ),
             ],

@@ -59,6 +59,7 @@ class MemCoachChannelBridge(
             "conversation.updateMessageCount" -> updateConversationMessageCount(arguments)
             "conversation.delete" -> deleteConversation(arguments)
             "pdf.delete" -> deletePdf(arguments)
+            "pdf.getActiveJobs" -> getActivePdfJobs()
             else -> error("Unsupported native method: $method")
         }
     }
@@ -67,6 +68,10 @@ class MemCoachChannelBridge(
         val id = arguments["id"] as? String ?: return mapOf("error" to "id is required")
         pdfRepository.deleteDocument(id)
         return mapOf("id" to id, "deleted" to true)
+    }
+
+    private fun getActivePdfJobs(): List<String> {
+        return pipelineService.getActiveJobIds()
     }
 
     private suspend fun getInsightSummary(): Map<String, Any?> {
@@ -337,7 +342,9 @@ class MemCoachChannelBridge(
                 "answer" to (q.answer ?: ""),
                 "explanation" to (q.explanation ?: ""),
                 "source_file" to q.sourceFile,
-                "source_page" to q.sourcePage
+                "source_page" to q.sourcePage,
+                "parse_confidence" to q.parseConfidence,
+                "parse_status" to q.parseStatus
             )
         }
     }
@@ -365,41 +372,51 @@ class MemCoachChannelBridge(
             )
         )
 
-        // 更新掌握度
+        // 更新掌握度：只有题目 topic 能匹配到真实知识点时才写 user_mastery。
+        // PDF 解析出的 topic 可能只是标签文本，不一定等于 knowledge_nodes.id；直接写会触发外键错误，导致提交失败。
         val now = System.currentTimeMillis()
-        val existing = userMasteryDao.getByUserAndKnowledge(userId = "default", knowledgeId = knowledgeId)
-        val updated = if (existing != null) {
-            val newLevel = if (isCorrect) {
-                minOf(1f, existing.masteryLevel + 0.1f)
+        val validKnowledgeId = question.topic
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.takeIf { knowledgeNodeDao.getById(it) != null }
+        val masteryLevel = if (validKnowledgeId != null) {
+            val existing = userMasteryDao.getByUserAndKnowledge(userId = "default", knowledgeId = validKnowledgeId)
+            val updated = if (existing != null) {
+                val newLevel = if (isCorrect) {
+                    minOf(1f, existing.masteryLevel + 0.1f)
+                } else {
+                    maxOf(0f, existing.masteryLevel - 0.05f)
+                }
+                val nextReview = if (isCorrect) {
+                    now + (existing.reviewCount + 1) * 24 * 60 * 60 * 1000L
+                } else {
+                    now + 12 * 60 * 60 * 1000L
+                }
+                existing.copy(
+                    masteryLevel = newLevel,
+                    reviewCount = existing.reviewCount + 1,
+                    correctCount = if (isCorrect) existing.correctCount + 1 else existing.correctCount,
+                    lastReviewDate = now,
+                    nextReviewDate = nextReview,
+                    updatedAt = now
+                )
             } else {
-                maxOf(0f, existing.masteryLevel - 0.05f)
+                cn.com.memcoach.data.entity.UserMastery(
+                    userId = "default",
+                    knowledgeId = validKnowledgeId,
+                    masteryLevel = if (isCorrect) 0.5f else 0.2f,
+                    reviewCount = 1,
+                    correctCount = if (isCorrect) 1 else 0,
+                    lastReviewDate = now,
+                    nextReviewDate = if (isCorrect) now + 24 * 60 * 60 * 1000L else now + 12 * 60 * 60 * 1000L,
+                    updatedAt = now
+                )
             }
-            val nextReview = if (isCorrect) {
-                now + (existing.reviewCount + 1) * 24 * 60 * 60 * 1000L
-            } else {
-                now + 12 * 60 * 60 * 1000L
-            }
-            existing.copy(
-                masteryLevel = newLevel,
-                reviewCount = existing.reviewCount + 1,
-                correctCount = if (isCorrect) existing.correctCount + 1 else existing.correctCount,
-                lastReviewDate = now,
-                nextReviewDate = nextReview,
-                updatedAt = now
-            )
+            userMasteryDao.upsert(updated)
+            "%.0f%%".format(updated.masteryLevel * 100)
         } else {
-            cn.com.memcoach.data.entity.UserMastery(
-                userId = "default",
-                knowledgeId = knowledgeId,
-                masteryLevel = if (isCorrect) 0.5f else 0.2f,
-                reviewCount = 1,
-                correctCount = if (isCorrect) 1 else 0,
-                lastReviewDate = now,
-                nextReviewDate = if (isCorrect) now + 24 * 60 * 60 * 1000L else now + 12 * 60 * 60 * 1000L,
-                updatedAt = now
-            )
+            null
         }
-        userMasteryDao.upsert(updated)
 
         return mapOf(
             "correct" to isCorrect,
@@ -407,8 +424,9 @@ class MemCoachChannelBridge(
             "correct_answer" to correctAnswer,
             "explanation" to (question.explanation ?: ""),
             "hint" to if (!isCorrect) "请仔细阅读解析，理解错误原因后再尝试变式练习" else "回答正确！继续保持",
-            "mastery_level" to "%.0f%%".format(updated.masteryLevel * 100)
+            "mastery_level" to masteryLevel
         )
+
     }
 
     private suspend fun getKnowledgeTree(arguments: Map<String, Any?>): List<Map<String, Any?>> {
@@ -615,6 +633,7 @@ class MemCoachChannelBridge(
             val map = item as? Map<*, *> ?: return@mapNotNull null
             val role = map["role"] as? String ?: return@mapNotNull null
             val content = map["content"] as? String ?: ""
+            val reasoningContent = map["reasoning_content"] as? String
             val toolCallId = map["tool_call_id"] as? String
             val toolCallsRaw = map["tool_calls"] as? List<*>
             val toolCalls = toolCallsRaw?.mapNotNull { tc ->
@@ -627,6 +646,7 @@ class MemCoachChannelBridge(
             ConversationMessage(
                 role = role,
                 content = content,
+                reasoningContent = reasoningContent,
                 toolCallId = toolCallId,
                 toolCalls = toolCalls
             )
@@ -743,6 +763,7 @@ class MemCoachChannelBridge(
             ?: return mapOf("error" to "conversationId is required")
         val role = arguments["role"] as? String ?: return mapOf("error" to "role is required")
         val content = arguments["content"] as? String ?: return mapOf("error" to "content is required")
+        val reasoningContent = arguments["reasoning_content"] as? String
         val toolName = arguments["toolName"] as? String
         val toolStatus = arguments["toolStatus"] as? String
         val toolResult = arguments["toolResult"] as? String
@@ -754,6 +775,7 @@ class MemCoachChannelBridge(
             conversationId = conversationId,
             role = role,
             content = content,
+            thinkingContent = reasoningContent,
             toolName = toolName,
             toolStatus = toolStatus,
             toolResult = toolResult,

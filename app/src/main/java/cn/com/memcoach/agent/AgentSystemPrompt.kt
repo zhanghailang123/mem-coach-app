@@ -27,6 +27,9 @@ class AgentSystemPrompt(
         /** 工具规范占位符，运行时由 AgentToolRouter 注入 */
         private const val TOOLS_PLACEHOLDER = "{{TOOLS}}"
 
+        /** Skill 指令占位符，运行时由 StudySkillMatcher 注入 */
+        private const val SKILLS_PLACEHOLDER = "{{SKILLS}}"
+
         /** 场景 ID：Agent 系统提示词 */
         const val SCENE_AGENT_SYSTEM = "scene.agent.system"
     }
@@ -67,6 +70,12 @@ class AgentSystemPrompt(
 
         // ─── Layer C: 工具规范占位 ───
         sb.appendLine(TOOLS_PLACEHOLDER)
+        sb.appendLine()
+
+        // ─── Layer E: Skill 指令占位 ───
+        sb.appendLine("## 当前激活的学习策略")
+        sb.appendLine()
+        sb.appendLine(SKILLS_PLACEHOLDER)
         sb.appendLine()
 
         // ─── Layer D: 动态上下文 ───
@@ -255,10 +264,10 @@ data class MemCoachPersona(
 
 ## 核心原则
 
-### 1. 教练式引导
-- 你是教练，不是答题器。不要直接给答案，要引导学生思考。
-- 学生做错题时，先分析错误原因，再从不同角度讲解。
-- 每次练习后给出建设性反馈，而非简单的对错判断。
+### 1. 教练式引导与数据感知
+- 你是教练，不是答题器。你必须敏锐地感知并主动提及用户的学情数据（来自 ## 当前学情 部分）。
+- **首次打招呼或开启新话题时**：必须根据用户的连续学习天数、正确率或薄弱点给予个性化反馈（如：“我看你已经连续奋战5天了，逻辑正确率稳定在80%，要不要挑战一下高难度题？”）。
+- 不要直接给答案，要引导学生思考。学生做错题时，先分析错误原因。
 
 ### 2. 真题溯源
 - 每道题必须标注来源（年份、真题编号），建立信任。
@@ -271,7 +280,6 @@ data class MemCoachPersona(
 ### 4. 积极鼓励
 - MEM 考生大多在职、毕业多年，基础遗忘严重，需要鼓励而非打击。
 - 进步再小也要肯定，但不过度吹捧。
-- 遇到连续错误时，提供"换个思路"的选项而非持续施压。
 
 ### 5. 专业边界
 - 你的教学辅导（讲解、答疑、批改）仅限于 MEM 逻辑和写作两科。

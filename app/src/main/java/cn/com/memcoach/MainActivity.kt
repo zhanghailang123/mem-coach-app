@@ -16,6 +16,9 @@ import cn.com.memcoach.agent.tool.handlers.KnowledgeToolHandler
 import cn.com.memcoach.agent.tool.handlers.LongTermMemoryToolHandler
 import cn.com.memcoach.agent.tool.handlers.MemoryToolHandler
 import cn.com.memcoach.agent.tool.handlers.PDFToolHandler
+import cn.com.memcoach.agent.tool.handlers.SystemToolHandler
+import cn.com.memcoach.agent.tool.handlers.WebSearchToolHandler
+import cn.com.memcoach.agent.tool.mcp.RemoteMcpClient
 import cn.com.memcoach.channel.MemCoachChannelBridge
 import cn.com.memcoach.channel.NativeEventSink
 import cn.com.memcoach.data.AppDatabase
@@ -71,6 +74,18 @@ class MainActivity : FlutterActivity() {
             register(PDFToolHandler(pipelineService, pdfRepository, activityScope))
             register(DailyMemoryToolHandler(dailyMemoryService))
             register(LongTermMemoryToolHandler(longTermMemoryService))
+            
+            // 注册通用基础工具
+            register(WebSearchToolHandler())
+            register(SystemToolHandler())
+            
+            // 注册 Remote MCP Client
+            // 实际应用中，服务器地址应该从配置或用户设置中获取
+            val mcpClient = RemoteMcpClient("http://localhost:8080")
+            activityScope.launch(Dispatchers.IO) {
+                mcpClient.initialize()
+            }
+            register(mcpClient)
         }
 
         val contextCompactor = AgentContextCompactor(llmClient)
@@ -92,7 +107,9 @@ class MainActivity : FlutterActivity() {
             systemPrompt = AgentSystemPrompt(),
             contextCompactor = contextCompactor,
             stateMachine = studyStateMachine,
-            llmRouter = llmRouter
+            llmRouter = llmRouter,
+            dailyMemoryService = dailyMemoryService,
+            orchestratorScope = activityScope
         )
 
 
@@ -158,9 +175,9 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun defaultLlmConfig(): LlmConfig = LlmConfig(
-        baseUrl = "https://token-plan-sgp.xiaomimimo.com/v1",
-        apiKey = "tp-sr27ssk59iklx5l0xkb0jwui70fqtzjh4y276sojdjl70o8r",
-        defaultModel = "mimo-v2.5-pro"
+        baseUrl = "https://api.deepseek.com/v1",
+        apiKey = "sk-5128e904815840ebaaa819d395da66c1",
+        defaultModel = "deepseek-v4-flash"
     )
 
     private data class LlmConfig(

@@ -17,6 +17,10 @@ class AgentLlmStreamAccumulator {
     var content: String = ""
         private set
 
+    /** 累积的深度思考内容 */
+    var reasoningContent: String = ""
+        private set
+
     /** 累积的工具调用列表 */
     private val _toolCalls = mutableListOf<ToolCallAccumulator>()
     val toolCalls: List<ToolCall>
@@ -46,6 +50,11 @@ class AgentLlmStreamAccumulator {
         // 1. 累积纯文本增量
         if (!chunk.content.isNullOrBlank()) {
             content += chunk.content
+        }
+
+        // 1.1 累积深度思考增量
+        if (!chunk.reasoningContent.isNullOrBlank()) {
+            reasoningContent += chunk.reasoningContent
         }
 
         // 2. 累积工具调用增量
@@ -126,16 +135,18 @@ class AgentLlmStreamAccumulator {
         return ChatMessage(
             role = "assistant",
             content = content.ifBlank { " " },  // 纯工具调用时 content 可能为空，但 API 要求不能为空
+            reasoningContent = reasoningContent.takeIf { it.isNotBlank() },
             toolCalls = toolCalls
         )
     }
 
     /** 判断是否有内容 */
-    fun hasContent(): Boolean = content.isNotBlank()
+    fun hasAnyContent(): Boolean = content.isNotBlank() || reasoningContent.isNotBlank()
 
     /** 重置累加器 */
     fun reset() {
         content = ""
+        reasoningContent = ""
         _toolCalls.clear()
         finishReason = null
         promptTokens = 0
@@ -165,6 +176,7 @@ class AgentLlmStreamAccumulator {
  */
 data class LlmStreamChunk(
     val content: String? = null,
+    val reasoningContent: String? = null, // 新增思考片段
     val finishReason: String? = null,
     val toolCalls: List<LlmToolCallChunk>? = null,
     val usage: LlmTokenUsage? = null

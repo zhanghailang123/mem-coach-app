@@ -153,12 +153,29 @@ class MarkdownBubble extends StatelessWidget {
       );
     }
 
+    // 预处理内容，增加 math 标签支持（将 $$...$$ 包装在 <math> 标签中）
+    // 注意：这是为了配合 _MathBuilder 工作的 hack
+    String processedContent = content;
+    // 先处理块级公式
+    processedContent = processedContent.replaceAllMapped(
+      RegExp(r'\$\$(.*?)\$\$', dotAll: true),
+      (match) => '<math>${match.group(0)}</math>',
+    );
+    // 再处理行内公式（排除掉已经处理过的块级标记）
+    processedContent = processedContent.replaceAllMapped(
+      RegExp(r'(?<!\$)\$(?!\$)(.*?)\$'),
+      (match) => '<math>${match.group(0)}</math>',
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: MarkdownBody(
-        data: content,
+        data: processedContent,
         selectable: true,
         extensionSet: md.ExtensionSet.gitHubFlavored,
+        inlineSyntaxes: [
+          _MathTagSyntax(),
+        ],
         builders: {
           'math': _MathBuilder(),
         },
@@ -303,6 +320,21 @@ class MarkdownBubble extends StatelessWidget {
       // 更早：显示 MM-dd HH:mm
       return '${timestamp.month.toString().padLeft(2, '0')}-${timestamp.day.toString().padLeft(2, '0')} ${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
     }
+  }
+}
+
+/// LaTeX 标签语法解析器
+class _MathTagSyntax extends md.InlineSyntax {
+  _MathTagSyntax() : super(r'<math>(.*?)</math>');
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    final formula = match.group(1);
+    if (formula != null) {
+      final element = md.Element.text('math', formula);
+      parser.addNode(element);
+    }
+    return true;
   }
 }
 

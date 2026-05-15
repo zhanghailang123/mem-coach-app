@@ -9,6 +9,7 @@ import 'tool_activity_bar.dart';
 import 'deep_thinking_card.dart';
 import 'slash_command_panel.dart';
 import '../utils/deep_thinking_parser.dart';
+import '../utils/agent_stream_reducer.dart';
 
 /// 全屏沉浸式聊天 Sheet
 /// 借鉴 OpenOmniBot ChatBotSheet 的 DraggableScrollableSheet 设计
@@ -69,8 +70,13 @@ class _ChatSheetState extends State<ChatSheet> {
   final List<_ChatMessage> _messages = [];
   StreamSubscription<AgentNativeEvent>? _sub;
   Timer? _pdfStatusTimer;
+  Timer? _pdfDismissTimer;
   String _status = '';
   bool _running = false;
+
+  // Agent 流式事件状态管理（借鉴 OpenOmniBot Reducer 模式）
+  final AgentStreamReducer _agentStreamReducer = const AgentStreamReducer();
+  AgentStreamState _agentStreamState = const AgentStreamState();
 
   
   // 会话状态
@@ -88,6 +94,7 @@ class _ChatSheetState extends State<ChatSheet> {
   int? _thinkingStartTime;
   int? _thinkingEndTime;
   String _reasoningEffort = '中';
+  static const String _thinkingPlaceholder = '正在理解你的问题...';
   
   // 学习状态
   String _currentState = '';
@@ -149,6 +156,29 @@ class _ChatSheetState extends State<ChatSheet> {
     
     // 初始化会话
     _initConversation();
+
+    // 自动恢复 PDF 解析进度追踪
+    if (widget.initialPdfJobId == null) {
+      _resumeActivePdfJobs();
+    }
+  }
+
+  /// 恢复正在运行的 PDF 解析任务
+  Future<void> _resumeActivePdfJobs() async {
+    try {
+      final activeJobs = await MemCoachNativeBridge.getActivePdfJobs();
+      if (!mounted) return;
+      if (activeJobs.isNotEmpty) {
+        final latestJobId = activeJobs.last;
+        setState(() {
+          _pdfJobId = latestJobId;
+          _pdfParseStatus = 'processing';
+        });
+        _startPdfStatusPolling(latestJobId);
+      }
+    } catch (e) {
+      debugPrint('恢复 PDF 任务进度失败: $e');
+    }
   }
 
   
@@ -172,6 +202,7 @@ class _ChatSheetState extends State<ChatSheet> {
       if (!mounted) return;
       setState(() {
         _conversationId = result['id'] as int?;
+        _status = ''; // 清空初始化状态
       });
     } catch (error) {
       if (!mounted) return;
@@ -221,6 +252,9 @@ class _ChatSheetState extends State<ChatSheet> {
               _ => _ChatRole.user,
             },
             content: content,
+            reasoningContent: _nullableMessageText(
+              msg['reasoning_content'] ?? msg['thinking_content'],
+            ),
             toolCallId: msg['tool_call_id']?.toString(),
             toolCalls: toolCalls,
             timestamp: timestamp,
@@ -261,7 +295,11 @@ class _ChatSheetState extends State<ChatSheet> {
         _pdfDuplicateQuestions = int.tryParse(status['duplicate_questions']?.toString() ?? '') ?? 0;
         _pdfParseErrors = rawErrors is List ? rawErrors.map((e) => e.toString()).toList() : const [];
       });
-      if (_pdfParseStatus == 'done' || _pdfParseStatus == 'error' || _pdfParseStatus == 'not_found') {
+      if (_pdfParseStatus == 'done') {
+        _pdfStatusTimer?.cancel();
+        _pdfStatusTimer = null;
+        _schedulePdfStatusDismiss();
+      } else if (_pdfParseStatus == 'error' || _pdfParseStatus == 'not_found') {
         _pdfStatusTimer?.cancel();
         _pdfStatusTimer = null;
       }
@@ -276,9 +314,39 @@ class _ChatSheetState extends State<ChatSheet> {
     }
   }
 
-  void _handleAgentEvent(AgentNativeEvent event) {
+  void _schedulePdfStatusDismiss() {
+    _pdfDismissTimer?.cancel();
+    _pdfDismissTimer = Timer(const Duration(milliseconds: 2500), () {
+      if (!mounted) return;
+      setState(_clearPdfStatusCard);
+    });
+  }
 
+  void _clearPdfStatusCard() {
+    _pdfStatusTimer?.cancel();
+    _pdfStatusTimer = null;
+    _pdfDismissTimer?.cancel();
+    _pdfDismissTimer = null;
+    _pdfJobId = null;
+    _pdfParseStatus = '';
+    _pdfParseProgress = 0;
+    _pdfParsedQuestions = 0;
+    _pdfInsertedQuestions = 0;
+    _pdfDuplicateQuestions = 0;
+    _pdfParseErrors = const [];
+  }
+
+  void _handleAgentEvent(AgentNativeEvent event) {
     if (!mounted) return;
+
+    // 使用 Reducer 模式检查事件是否需要处理
+    final seq = event.raw['seq'] as int?;
+    final reduceResult = _agentStreamReducer.reduce(_agentStreamState, event.type, seq);
+    if (!reduceResult.accepted) {
+      return; // 忽略重复事件
+    }
+    _agentStreamState = reduceResult.nextState;
+
     setState(() {
       switch (event.type) {
         case 'state_changed':
@@ -293,24 +361,21 @@ class _ChatSheetState extends State<ChatSheet> {
           }
           _status = 'Agent 正在思考（$_reasoningEffort强度）...';
           _isThinking = true;
-          _thinkingText = '';
+          if (_thinkingText.trim().isEmpty) {
+            _thinkingText = _thinkingPlaceholder;
+          }
           _thinkingStage = 1;
-          _thinkingStartTime = DateTime.now().millisecondsSinceEpoch;
+          _thinkingStartTime ??= DateTime.now().millisecondsSinceEpoch;
           _thinkingEndTime = null;
-          // 注意：不在这里创建助手消息，避免与 DeepThinkingCard 重复显示"思考中"
-          // 助手消息会在 chat_message 事件到达时由 _appendAssistantContent() 创建
           break;
         case 'thinking_update':
           _status = 'Agent 正在思考...';
           _thinkingText += event.content ?? '';
-          _thinkingStage = 2; // 规划任务中
-          // 解析思考内容
+          _thinkingStage = 2;
           final thinkingResult = DeepThinkingParser.extractDeepThinking(_thinkingText);
           if (thinkingResult.hasAnyContent) {
             _thinkingText = thinkingResult.toDisplayText();
           }
-          // 注意：thinking_update 只更新思考内容，不追加到助手消息
-          // 实际回复内容由 chat_message 事件处理
           break;
         case 'tool_call_start':
           _status = '正在调用工具：${event.toolName ?? 'unknown'}';
@@ -342,7 +407,6 @@ class _ChatSheetState extends State<ChatSheet> {
             result: event.result,
           );
           break;
-
         case 'tool_call_error':
           _status = '工具调用失败：${event.toolName ?? 'unknown'}';
           _updateToolActivity(
@@ -351,7 +415,6 @@ class _ChatSheetState extends State<ChatSheet> {
             result: event.error,
           );
           break;
-
         case 'chat_message':
           _status = 'Agent 正在回复...';
           _appendAssistantContent(event.content ?? '');
@@ -359,7 +422,6 @@ class _ChatSheetState extends State<ChatSheet> {
             _attachCurrentToolCallsToLastAssistantMessage();
           }
           break;
-
         case 'context_compacted':
           final prevTokens = event.raw['previousPromptTokens'] ?? 0;
           _status = '上下文已压缩（原 Token: $prevTokens）';
@@ -368,24 +430,21 @@ class _ChatSheetState extends State<ChatSheet> {
         case 'complete':
           _running = false;
           _status = '';
-          // 保存助手消息到数据库
-          _saveAssistantMessageToDatabase();
-          // 完成思考
           _isThinking = false;
           _thinkingStage = 4;
           _thinkingEndTime = DateTime.now().millisecondsSinceEpoch;
-          // 保留工具活动历史，等待下次发送时清理
+          _attachThinkingToLastAssistantMessage();
+          _saveAssistantMessageToDatabase();
           break;
         case 'error':
           _running = false;
           _status = event.error ?? '执行失败';
           _appendAssistantContent('\n${event.error ?? '执行失败'}');
-          // 保存错误消息到数据库
-          _saveAssistantMessageToDatabase();
-          // 停止思考
           _isThinking = false;
+          _thinkingStage = 4;
           _thinkingEndTime = DateTime.now().millisecondsSinceEpoch;
-          // 标记所有运行中的工具为失败
+          _attachThinkingToLastAssistantMessage();
+          _saveAssistantMessageToDatabase();
           for (var i = 0; i < _toolActivities.length; i++) {
             if (_toolActivities[i].status == ToolActivityStatus.running) {
               _toolActivities[i] = _toolActivities[i].copyWith(
@@ -397,7 +456,6 @@ class _ChatSheetState extends State<ChatSheet> {
           break;
       }
     });
-    // 自动滚动到底部
     _scrollToBottom();
   }
   
@@ -432,6 +490,7 @@ class _ChatSheetState extends State<ChatSheet> {
         conversationId: _conversationId!,
         role: 'assistant',
         content: lastMessage.content,
+        reasoningContent: lastMessage.reasoningContent,
         toolCalls: lastMessage.toolCalls.map((call) => call.toJson()).toList(),
       );
       for (final message in _messages.where((message) => message.role == _ChatRole.tool && message.toolCallId != null)) {
@@ -458,11 +517,13 @@ class _ChatSheetState extends State<ChatSheet> {
   void dispose() {
     _sub?.cancel();
     _pdfStatusTimer?.cancel();
+    _pdfDismissTimer?.cancel();
     _controller.dispose();
 
     _scrollController.dispose();
     super.dispose();
   }
+
 
   void _handleInputChanged(String text) {
     // 避免自动补全时的递归调用
@@ -520,49 +581,46 @@ class _ChatSheetState extends State<ChatSheet> {
       return;
     }
     
-    // 保存用户消息到数据库
-    if (_conversationId != null) {
-      try {
-        await MemCoachNativeBridge.addChatMessage(
-          conversationId: _conversationId!,
-          role: 'user',
-          content: text,
-        );
-      } catch (error) {
-        // 忽略数据库错误，继续执行
-        debugPrint('保存用户消息失败：$error');
-      }
-    }
-    
-    // 保存最后发送的文本，用于重试
     _lastSentText = text;
-    
+    final sentAt = DateTime.now();
+
     setState(() {
       _messages.add(_ChatMessage(
         role: _ChatRole.user,
         content: text,
-        timestamp: DateTime.now(),
+        timestamp: sentAt,
       ));
-      // 注意：不预创建空助手消息，避免 MarkdownBubble 重复显示"思考中"
-      // 助手消息会在收到实际内容时由 _ensureAssistantMessage() 创建
-      _status = '启动 Agent...';
+      _status = 'Agent 正在思考（$_reasoningEffort强度）...';
       _running = true;
       _controller.clear();
-      // 清理上一轮的工具活动
+      _showSlashCommandPanel = false;
       _toolActivities.clear();
       _currentTurnToolCalls.clear();
-      // 清理上一轮的思考状态
-      _thinkingText = '';
-      _isThinking = false;
+      _thinkingText = _thinkingPlaceholder;
+      _isThinking = true;
       _thinkingStage = 1;
-      _thinkingStartTime = null;
+      _thinkingStartTime = sentAt.millisecondsSinceEpoch;
       _thinkingEndTime = null;
     });
     _scrollToBottom();
+
+    final history = _messagesForNativeHistory();
+
+    if (_conversationId != null) {
+      unawaited(MemCoachNativeBridge.addChatMessage(
+        conversationId: _conversationId!,
+        role: 'user',
+        content: text,
+      ).catchError((Object error) {
+        debugPrint('保存用户消息失败：$error');
+        return <String, dynamic>{};
+      }));
+    }
+
     try {
       await MemCoachNativeBridge.startAgentTurn(
         message: text,
-        history: _messagesForNativeHistory(),
+        history: history,
       );
 
     } catch (error) {
@@ -624,16 +682,28 @@ class _ChatSheetState extends State<ChatSheet> {
     try {
       final documents = await MemCoachNativeBridge.listPdfs();
       if (!mounted) return;
+
       if (documents.isEmpty) {
         setState(() => _status = '暂无已导入 PDF。请先通过 Agent 上传 PDF 文件。');
         return;
       }
+
+      // 读取成功后，在显示弹窗前先清空状态，避免状态栏一直显示“正在读取”
+      setState(() => _status = '');
+
       final selected = await showModalBottomSheet<Map<String, dynamic>>(
         context: context,
         showDragHandle: true,
         builder: (context) => _PdfDocumentSheet(documents: documents),
       );
-      if (selected == null || !mounted) return;
+
+      if (!mounted) return;
+
+      if (selected == null) {
+        setState(() => _status = ''); // 用户取消了，清空状态
+        return;
+      }
+
       final id = selected['id']?.toString() ?? '';
       final name = selected['file_name']?.toString() ?? 'PDF';
       final pageCount = selected['page_count']?.toString() ?? '?';
@@ -659,7 +729,34 @@ class _ChatSheetState extends State<ChatSheet> {
     if (content.isEmpty) return;
     _ensureAssistantMessage();
     final last = _messages.removeLast();
-    _messages.add(last.copyWith(content: last.content + content));
+    // 使用增量合并而非累加（借鉴 OpenOmniBot 的 stream_text_merge.dart）
+    final mergedContent = mergeAssistantContent(last.content, content);
+    _messages.add(last.copyWith(
+      content: mergedContent,
+      reasoningContent: _currentThinkingContent(),
+    ));
+  }
+
+  String? _currentThinkingContent() {
+    return _nullableMessageText(_thinkingText == _thinkingPlaceholder ? null : _thinkingText);
+  }
+
+  String? _nullableMessageText(Object? value) {
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty || text == 'null') return null;
+    return text;
+  }
+
+  void _attachThinkingToLastAssistantMessage() {
+    final thinking = _currentThinkingContent();
+    if (thinking == null) return;
+    for (var i = _messages.length - 1; i >= 0; i--) {
+      final message = _messages[i];
+      if (message.role == _ChatRole.assistant) {
+        _messages[i] = message.copyWith(reasoningContent: thinking);
+        return;
+      }
+    }
   }
 
   void _attachCurrentToolCallsToLastAssistantMessage() {
@@ -688,76 +785,92 @@ class _ChatSheetState extends State<ChatSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
+
     return DraggableScrollableSheet(
-      initialChildSize: 0.75,
-      minChildSize: 0.3,
-      maxChildSize: 0.95,
+      initialChildSize: 0.92,
+      minChildSize: 0.55,
+      maxChildSize: 1,
       snap: true,
-      snapSizes: const [0.4, 0.75, 0.95],
+      snapSizes: const [0.75, 0.92, 1],
       builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            children: [
-              // ── 拖拽指示条 + 头部 ──
-              _buildHeader(context),
-              // ── 状态指示 ──
-              if (_status.isNotEmpty && !_isTransientStatus()) _buildStatusBar(),
-              // ── 工具活动条 ──
-              if (_toolActivities.isNotEmpty) _buildToolActivityBar(),
-              // ── PDF 解析状态 ──
-              if (_pdfJobId != null && _pdfParseStatus.isNotEmpty) _buildPdfParseStatusCard(),
-              // ── 斜杠命令面板 ──
+        return AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.only(bottom: keyboardInset),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: Column(
+              children: [
+                // ── 拖拽指示条 + 头部 ──
+                _buildHeader(context),
+                // ── 状态指示 ──
+                if (_status.isNotEmpty && !_isTransientStatus()) _buildStatusBar(),
+                // ── 工具活动条 ──
+                if (_toolActivities.isNotEmpty) _buildToolActivityBar(),
+                // ── PDF 解析状态 ──
+                if (_pdfJobId != null && _pdfParseStatus.isNotEmpty) _buildPdfParseStatusCard(),
+                // ── 斜杠命令面板 ──
 
-              if (_showSlashCommandPanel) _buildSlashCommandPanel(),
-              // ── 消息列表 ──
-              Expanded(
-                child: _isLoadingConversation
-                    ? _buildLoadingState()
-                    : _messages.isEmpty
-                        ? _buildEmptyState()
-                        : ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            itemCount: _messages.length + (_thinkingText.isNotEmpty ? 1 : 0),
-                            itemBuilder: (context, index) {
-                              // 如果有思考内容，在第一个位置显示思考卡片
-                              if (_thinkingText.isNotEmpty && index == 0) {
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
-                                  child: DeepThinkingCard(
-                                    thinkingText: _thinkingText,
-                                    isLoading: _isThinking,
-                                    stage: _thinkingStage,
-                                    startTime: _thinkingStartTime,
-                                    endTime: _thinkingEndTime,
-                                    isCollapsible: true,
-                                    autoCollapseOnComplete: true,
-                                  ),
+                if (_showSlashCommandPanel) _buildSlashCommandPanel(),
+                // ── 消息列表 ──
+                Expanded(
+                  child: _isLoadingConversation
+                      ? _buildLoadingState()
+                      : _messages.isEmpty
+                          ? _buildEmptyState()
+                          : Builder(
+                              builder: (context) {
+                                final showLiveThinking = _isThinking || _thinkingText.trim().isNotEmpty;
+                                final liveThinkingText = _thinkingText.trim().isNotEmpty
+                                    ? _thinkingText
+                                    : _thinkingPlaceholder;
+                                return ListView.builder(
+                                  controller: _scrollController,
+                                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                                  itemCount: _messages.length + (showLiveThinking ? 1 : 0),
+                                  itemBuilder: (context, index) {
+                                    // 如果有思考状态，在第一个位置显示实时思考卡片
+                                    if (showLiveThinking && index == 0) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(bottom: 12),
+                                        child: DeepThinkingCard(
+                                          thinkingText: liveThinkingText,
+                                          isLoading: _isThinking,
+                                          stage: _thinkingStage,
+                                          startTime: _thinkingStartTime,
+                                          endTime: _thinkingEndTime,
+                                          isCollapsible: true,
+                                          autoCollapseOnComplete: true,
+                                        ),
+                                      );
+                                    }
+                                    // 调整消息索引
+                                    final messageIndex = showLiveThinking ? index - 1 : index;
+                                    final message = _messages[messageIndex];
+                                    if (message.role == _ChatRole.tool) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return _buildMessageItem(message);
+                                  },
                                 );
-                              }
-                              // 调整消息索引
-                              final messageIndex = _thinkingText.isNotEmpty ? index - 1 : index;
-                              final message = _messages[messageIndex];
-                              if (message.role == _ChatRole.tool) {
-                                return const SizedBox.shrink();
-                              }
-                              return _buildMessageItem(message);
-
-                            },
-                          ),
-              ),
-              // ── 底部输入栏 ──
-              _buildInputBar(),
-            ],
+                              },
+                            ),
+                ),
+                // ── 底部输入栏 ──
+                _buildInputBar(),
+              ],
+            ),
           ),
         );
       },
     );
   }
+
 
   Widget _buildHeader(BuildContext context) {
     return Container(
@@ -842,23 +955,39 @@ class _ChatSheetState extends State<ChatSheet> {
 
   Widget _buildMessageItem(_ChatMessage message) {
     final hasToolCalls = message.role == _ChatRole.assistant && message.toolCalls.isNotEmpty;
-    if (!hasToolCalls) {
+    final reasoningContent = _nullableMessageText(message.reasoningContent);
+    if (!hasToolCalls && reasoningContent == null) {
       return MarkdownBubble(message: message);
     }
 
-    final names = message.toolCalls
-        .map((call) => call.name.trim())
-        .where((name) => name.isNotEmpty)
-        .toSet()
-        .join('、');
-    final summary = names.isEmpty
-        ? '工具调用 ${message.toolCalls.length} 次'
-        : '已使用工具：$names';
+    final children = <Widget>[MarkdownBubble(message: message)];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        MarkdownBubble(message: message),
+    if (reasoningContent != null) {
+      children.add(
+        Padding(
+          padding: const EdgeInsets.only(left: 4, right: 4, bottom: 8),
+          child: DeepThinkingCard(
+            thinkingText: reasoningContent,
+            isLoading: false,
+            stage: 4,
+            isCollapsible: true,
+            autoCollapseOnComplete: true,
+            maxHeight: 260,
+          ),
+        ),
+      );
+    }
+
+    if (hasToolCalls) {
+      final names = message.toolCalls
+          .map((call) => call.name.trim())
+          .where((name) => name.isNotEmpty)
+          .toSet()
+          .join('、');
+      final summary = names.isEmpty
+          ? '工具调用 ${message.toolCalls.length} 次'
+          : '已使用工具：$names';
+      children.add(
         Padding(
           padding: const EdgeInsets.only(left: 4, right: 4, bottom: 8),
           child: Container(
@@ -885,7 +1014,12 @@ class _ChatSheetState extends State<ChatSheet> {
             ),
           ),
         ),
-      ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
     );
   }
 
@@ -985,6 +1119,18 @@ class _ChatSheetState extends State<ChatSheet> {
                 '${_pdfParseProgress.clamp(0, 100)}%',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
+              if (isDone || isError) ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: '关闭',
+                  onPressed: () => setState(_clearPdfStatusCard),
+                  icon: const Icon(Icons.close_rounded, size: 16),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                ),
+              ],
+
             ],
           ),
           const SizedBox(height: 8),
@@ -1208,6 +1354,7 @@ class _ChatSheetState extends State<ChatSheet> {
           return <String, dynamic>{
             'role': role,
             'content': message.content,
+            if (message.reasoningContent != null) 'reasoning_content': message.reasoningContent,
             if (message.toolCallId != null) 'tool_call_id': message.toolCallId,
             if (message.toolCalls.isNotEmpty)
               'tool_calls': message.toolCalls.map((call) => call.toJson()).toList(),
@@ -1342,12 +1489,13 @@ class _ChatSheetState extends State<ChatSheet> {
 
   Widget _buildInputBar() {
     return Container(
-      padding: EdgeInsets.fromLTRB(
+      padding: const EdgeInsets.fromLTRB(
         16,
         8,
         8,
-        MediaQuery.of(context).viewInsets.bottom + 12,
+        12,
       ),
+
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(
@@ -1409,7 +1557,7 @@ class _ChatSheetState extends State<ChatSheet> {
                     maxLines: 4,
                     textInputAction: TextInputAction.newline,
                     decoration: const InputDecoration(
-                      hintText: '输入消息或 / 查看命令...',
+                      hintText: '输入消息...',
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     ),
@@ -1577,6 +1725,7 @@ class _ChatMessage {
   const _ChatMessage({
     required this.role,
     required this.content,
+    this.reasoningContent,
     this.timestamp,
     this.toolCallId,
     this.toolCalls = const [],
@@ -1584,12 +1733,14 @@ class _ChatMessage {
 
   final _ChatRole role;
   final String content;
+  final String? reasoningContent;
   final DateTime? timestamp;
   final String? toolCallId;
   final List<_ToolCallRecord> toolCalls;
 
   _ChatMessage copyWith({
     String? content,
+    String? reasoningContent,
     DateTime? timestamp,
     String? toolCallId,
     List<_ToolCallRecord>? toolCalls,
@@ -1597,6 +1748,7 @@ class _ChatMessage {
     return _ChatMessage(
       role: role,
       content: content ?? this.content,
+      reasoningContent: reasoningContent ?? this.reasoningContent,
       timestamp: timestamp ?? this.timestamp,
       toolCallId: toolCallId ?? this.toolCallId,
       toolCalls: toolCalls ?? this.toolCalls,

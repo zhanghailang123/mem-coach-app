@@ -1,11 +1,19 @@
 package cn.com.memcoach.agent
 
 import cn.com.memcoach.agent.llm.AgentLlmRouter
+import cn.com.memcoach.agent.memory.DailyMemoryService
+import cn.com.memcoach.agent.skill.StudySceneRecognizer
+import cn.com.memcoach.agent.skill.StudySkillMatcher
+import cn.com.memcoach.agent.skill.StudySkillLoader
+import cn.com.memcoach.agent.skill.StudyScene
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.launch
 
 
 /**
@@ -29,12 +37,26 @@ class AgentOrchestrator(
     private val systemPrompt: AgentSystemPrompt,
     private val contextCompactor: AgentContextCompactor? = null,
     private val stateMachine: StudyStateMachine? = null,
-    private val llmRouter: AgentLlmRouter? = null
+    private val llmRouter: AgentLlmRouter? = null,
+    private val dailyMemoryService: DailyMemoryService? = null,
+    private val orchestratorScope: CoroutineScope? = null,
+    private val skillRegistry: cn.com.memcoach.agent.skill.StudySkillRegistry? = null
 ) {
     companion object {
         private const val MAX_ROUNDS = 50  // 安全护栏：最多 50 轮
         private const val REFLECTION_INTERVAL = 5  // 每 5 轮触发一次反思
         private const val MAX_RETRY_ATTEMPTS = 3  // 工具调用最大重试次数
+    }
+    
+    /**
+     * 带序列号的事件发送包装函数
+     * 用于前端去重和增量合并
+     */
+    private suspend fun <T> SendChannel<T>.sendWithSeq(event: T, seqCounter: () -> Int): T {
+        // 注意：这里需要修改 AgentEvent 类来包含 seq 字段
+        // 暂时直接发送事件，序列号功能需要配合 AgentEvent 和 AgentEventMapper 修改
+        send(event)
+        return event
     }
 
     private var reasoningEffort: AgentReasoningEffort = AgentReasoningEffort.MEDIUM
@@ -79,6 +101,7 @@ class AgentOrchestrator(
      */
     suspend fun run(input: AgentInput): Flow<AgentEvent> = channelFlow {
         val messages = mutableListOf<ChatMessage>()
+        var eventSeq = 0  // 事件序列号，用于前端去重
 
         // ── 集成 StudyStateMachine：推断学习状态 ──
         val currentState = stateMachine?.let { sm ->
@@ -88,12 +111,39 @@ class AgentOrchestrator(
             inferred
         }
 
-        // Layer 1: 注入 System Prompt（人设 + 工作模式 + 工具规范 + 上下文 + 状态 Prompt）
+        // Layer 1: 注入 System Prompt（人设 + 工作模式 + 工具规范 + 上下文 + 状态 Prompt + Skill 指令）
         val basePrompt = systemPrompt.build(input.context)
         val statePrompt = stateMachine?.getStatePrompt() ?: ""
         val toolGuidelines = buildToolUsageGuidelines(currentState)
+        
+        // ── 集成 Skill 系统：识别场景、匹配 Skill、加载指令 ──
+        val skillInstructions = if (skillRegistry != null) {
+            val sceneRecognizer = StudySceneRecognizer()
+            val skillMatcher = StudySkillMatcher(skillRegistry)
+            val skillLoader = StudySkillLoader()
+            
+            // 识别学习场景
+            val scene = sceneRecognizer.recognize(input.userMessage, input.context)
+            
+            // 匹配最合适的 Skill
+            val matchedSkills = skillMatcher.match(scene, input.context)
+            
+            // 加载匹配 Skill 的指令
+            val instructions = matchedSkills.joinToString("\n\n---\n\n") { result ->
+                skillLoader.loadInstructions(result.skill)
+            }
+            
+            // 发送场景识别事件（用于 UI 展示）
+            send(AgentEvent.StateChanged(scene.name, sceneRecognizer.getSceneDisplayName(scene)))
+            
+            instructions
+        } else {
+            ""
+        }
+        
         val systemPromptText = basePrompt
             .replace("{{TOOLS}}", toolGuidelines)
+            .replace("{{SKILLS}}", if (skillInstructions.isNotBlank()) skillInstructions else "当前没有特定的学习策略激活。")
             .plus(if (statePrompt.isNotEmpty()) "\n\n$statePrompt" else "")
         messages.add(ChatMessage(role = "system", content = systemPromptText))
 
@@ -176,6 +226,12 @@ class AgentOrchestrator(
                         )
                     )
                 )
+
+                // ── 异步触发记忆巩固 ──
+                orchestratorScope?.launch(Dispatchers.IO) {
+                    consolidateSessionMemory(messages)
+                }
+
                 return@channelFlow
             }
 
@@ -266,6 +322,45 @@ class AgentOrchestrator(
             )
         )
     }.flowOn(Dispatchers.IO)
+
+    /**
+     * 记忆巩固：从对话中提取关键学习笔记、用户偏好等
+     */
+    private suspend fun consolidateSessionMemory(messages: List<ChatMessage>) {
+        val service = dailyMemoryService ?: return
+        val client = llmClient // 使用标准模型提取即可
+
+        try {
+            val historyText = messages.takeLast(6).joinToString("\n") { 
+                "${it.role}: ${it.content.take(200)}" 
+            }
+
+            val prompt = """
+                你是一个学习教练助手。请从以下对话片段中提取有价值的学习记忆（用户偏好、难点、进度、待办）。
+                
+                对话内容：
+                $historyText
+                
+                要求：
+                1. 仅输出一条最重要的简洁记忆点。
+                2. 语气要客观，如：“用户表示不喜欢代数推导，更倾向于几何直观展示。” 或 “用户计划本周末完成2024年真题。”
+                3. 如果没有发现重要信息，输出 "NONE"。
+                4. 不要带任何解释。
+            """.trimIndent()
+
+            val result = client.completeTurn(
+                messages = listOf(ChatMessage(role = "user", content = prompt)),
+                tools = null
+            )
+
+            val learning = result.content.trim()
+            if (learning != "NONE" && learning.length > 5) {
+                service.append("AI自动反思：$learning")
+            }
+        } catch (e: Exception) {
+            // 后台任务失败不影响主流程
+        }
+    }
 
     /**
      * 根据学习状态获取过滤后的工具定义
@@ -361,6 +456,7 @@ enum class AgentReasoningEffort {
 data class ChatMessage(
     val role: String,               // system / user / assistant / tool
     val content: String,
+    val reasoningContent: String? = null, // 深度思考内容
     val toolCallId: String? = null, // tool 角色时使用
     val toolCalls: List<ToolCall>? = null  // assistant 角色调用工具时使用
 )
@@ -380,12 +476,14 @@ data class ToolCall(
 data class ConversationMessage(
     val role: String,
     val content: String,
+    val reasoningContent: String? = null,
     val toolCallId: String? = null,
     val toolCalls: List<Map<String, String>>? = null
 ) {
     fun toChatMessage(): ChatMessage = ChatMessage(
         role = role,
         content = content,
+        reasoningContent = reasoningContent,
         toolCallId = toolCallId,
         toolCalls = toolCalls?.map {
             ToolCall(

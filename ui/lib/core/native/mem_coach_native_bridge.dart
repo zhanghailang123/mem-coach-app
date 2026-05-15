@@ -91,6 +91,11 @@ class MemCoachNativeBridge {
     return result ?? {};
   }
 
+  static Future<List<String>> getActivePdfJobs() async {
+    final result = await _methodChannel.invokeListMethod<String>('pdf.getActiveJobs');
+    return result ?? const [];
+  }
+
   static Future<void> deletePdf(String id) async {
     await _methodChannel.invokeMethod<void>('pdf.delete', {
       'id': id,
@@ -188,6 +193,7 @@ class MemCoachNativeBridge {
     required int conversationId,
     required String role,
     required String content,
+    String? reasoningContent,
     String? toolName,
     String? toolStatus,
     String? toolResult,
@@ -199,6 +205,7 @@ class MemCoachNativeBridge {
       'conversationId': conversationId,
       'role': role,
       'content': content,
+      'reasoning_content': reasoningContent,
       if (toolName != null) 'toolName': toolName,
       if (toolStatus != null) 'toolStatus': toolStatus,
       if (toolResult != null) 'toolResult': toolResult,

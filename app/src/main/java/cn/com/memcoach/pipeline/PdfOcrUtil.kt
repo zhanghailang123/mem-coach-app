@@ -2,13 +2,14 @@ package cn.com.memcoach.pipeline
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import java.io.File
-import java.io.FileInputStream
 
 /**
  * PDF OCR 工具类 —— 封装 Android PdfRenderer + ML Kit 中文 OCR。
@@ -27,6 +28,7 @@ class PdfOcrUtil(private val context: Context) {
 
     companion object {
         private const val TAG = "PdfOcrUtil"
+        private const val DEFAULT_TARGET_WIDTH = 1800
     }
 
     /** ML Kit 中文文字识别器（线程安全，延迟初始化） */
@@ -55,11 +57,12 @@ class PdfOcrUtil(private val context: Context) {
         try {
             val page = renderer.openPage(pageIndex)
 
-            // 计算渲染尺寸：如果未指定，使用原始尺寸缩放到合理分辨率
-            val width = if (targetWidth > 0) targetWidth else page.width
+            // 计算渲染尺寸：OCR 默认使用更高宽度，提升小字号、选项和标点识别稳定性。
+            val width = if (targetWidth > 0) targetWidth else maxOf(page.width, DEFAULT_TARGET_WIDTH)
             val height = if (targetHeight > 0) targetHeight else ((width.toFloat() / page.width) * page.height).toInt()
 
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            Canvas(bitmap).drawColor(Color.WHITE)
             page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
 
             page.close()
@@ -93,7 +96,26 @@ class PdfOcrUtil(private val context: Context) {
     suspend fun recognizeText(bitmap: Bitmap): String {
         val image = InputImage.fromBitmap(bitmap, 0)
         val result = recognizer.process(image).await()
-        return result.text
+        return cleanRecognizedText(result.text)
+    }
+
+    fun cleanRecognizedText(text: String): String {
+        if (text.isBlank()) return ""
+        return text
+            .replace('\u00A0', ' ')
+            .replace(Regex("[\\t\\x0B\\f\\r]+"), " ")
+            .lines()
+            .map { it.trim() }
+            .filter { line ->
+                line.isNotBlank() &&
+                    !line.matches(Regex("""^[-—_ ]*$""")) &&
+                    !line.matches(Regex("""^第?\s*\d+\s*[页頁]$""")) &&
+                    !line.matches(Regex("""^\d+\s*/\s*\d+$"""))
+            }
+            .joinToString("\n")
+            .replace(Regex("[ ]{2,}"), " ")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
     }
 
     /**

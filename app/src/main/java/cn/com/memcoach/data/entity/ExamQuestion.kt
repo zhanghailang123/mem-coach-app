@@ -2,6 +2,7 @@ package cn.com.memcoach.data.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -11,7 +12,13 @@ import androidx.room.PrimaryKey
  * options 和 knowledge_tags 以JSON字符串存储，
  * embedding 以ByteArray存储向量数据。
  */
-@Entity(tableName = "exam_questions")
+@Entity(
+    tableName = "exam_questions",
+    indices = [
+        Index(value = ["stem_hash"]),
+        Index(value = ["parse_status"])
+    ]
+)
 data class ExamQuestion(
     @PrimaryKey
     @ColumnInfo(name = "id")
@@ -55,6 +62,21 @@ data class ExamQuestion(
 
     @ColumnInfo(name = "knowledge_tags")
     val knowledgeTags: String?,        // JSON数组: ["条件推理","假言命题"]
+
+    @ColumnInfo(name = "source_text")
+    val sourceText: String? = null,    // 题目对应的原始 OCR/文本片段，便于追溯和校对
+
+    @ColumnInfo(name = "stem_hash")
+    val stemHash: String? = null,      // 标准化题干哈希，用于稳定去重
+
+    @ColumnInfo(name = "parse_confidence")
+    val parseConfidence: Float = 0.5f, // LLM/OCR 结构化置信度，0-1
+
+    @ColumnInfo(name = "parse_status")
+    val parseStatus: String = "parsed", // parsed / needs_review / invalid
+
+    @ColumnInfo(name = "parse_notes")
+    val parseNotes: String? = null,    // 低置信度或校验失败原因
 
     @ColumnInfo(name = "exam_frequency")
     val examFrequency: Int = 0,        // 近10年考频

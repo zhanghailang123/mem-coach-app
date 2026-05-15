@@ -1,6 +1,7 @@
 package cn.com.memcoach.agent.llm
 
 import cn.com.memcoach.agent.AgentLlmClient
+import cn.com.memcoach.agent.AgentTraceLogger
 import cn.com.memcoach.agent.ChatMessage
 import cn.com.memcoach.agent.LlmModelInfo
 import cn.com.memcoach.agent.LlmStreamChunk
@@ -48,10 +49,13 @@ class OpenAICompatibleAgentLlmClient(
         modelId: String?,
         onChunk: suspend (LlmStreamChunk) -> Unit
     ): LlmTurnResult = withContext(Dispatchers.IO) {
+        val traceId = AgentTraceLogger.newTraceId("llm_stream")
+        val startedAt = System.currentTimeMillis()
         try {
-            val request = buildRequest(messages, tools, modelId, stream = true)
+            val request = buildRequest(messages, tools, modelId, stream = true, traceId = traceId)
             val response = client.newCall(request).execute()
             val content = StringBuilder()
+            val reasoning = StringBuilder()
             val toolCalls = mutableMapOf<Int, ToolCallBuilder>()
             var finishReason: String? = null
             var usage: LlmTokenUsage? = null
@@ -71,13 +75,58 @@ class OpenAICompatibleAgentLlmClient(
                     chunk.usage?.let { usage = it }
                     chunk.finishReason?.let { finishReason = it }
                     chunk.content?.let { content.append(it) }
+                    chunk.reasoningContent?.let { reasoning.append(it) }
+                    if (!chunk.content.isNullOrBlank() || !chunk.reasoningContent.isNullOrBlank() || !chunk.toolCalls.isNullOrEmpty() || !chunk.finishReason.isNullOrBlank()) {
+                        AgentTraceLogger.event(
+                            "llm_stream_chunk",
+                            mapOf(
+                                "trace_id" to traceId,
+                                "model" to (modelId ?: defaultModel),
+                                "content_delta" to chunk.content,
+                                "reasoning_delta" to chunk.reasoningContent,
+                                "finish_reason" to chunk.finishReason,
+                                "tool_calls" to chunk.toolCalls.orEmpty().map { tc ->
+                                    mapOf(
+                                        "index" to tc.index,
+                                        "id" to tc.id,
+                                        "name" to tc.function?.name,
+                                        "arguments_delta" to tc.function?.arguments
+                                    )
+                                }
+                            )
+                        )
+                    }
                     onChunk(chunk)
                 }
             }
 
+            val finalToolCalls = toolCalls.toSortedMap().values.mapNotNull { it.toToolCallOrNull() }
+            AgentTraceLogger.event(
+                "llm_stream_response",
+                mapOf(
+                    "trace_id" to traceId,
+                    "model" to (modelId ?: defaultModel),
+                    "duration_ms" to (System.currentTimeMillis() - startedAt),
+                    "finish_reason" to finishReason,
+                    "content_length" to content.length,
+                    "content_preview" to content.toString(),
+                    "reasoning_length" to reasoning.length,
+                    "reasoning_preview" to reasoning.toString(),
+                    "tool_calls" to finalToolCalls.map { call ->
+                        mapOf(
+                            "id" to call.id,
+                            "name" to call.name,
+                            "arguments_length" to call.arguments.length,
+                            "arguments_preview" to call.arguments
+                        )
+                    },
+                    "prompt_tokens" to usage?.promptTokens,
+                    "completion_tokens" to usage?.completionTokens
+                )
+            )
             LlmTurnResult(
                 content = content.toString(),
-                toolCalls = toolCalls.toSortedMap().values.mapNotNull { it.toToolCallOrNull() },
+                toolCalls = finalToolCalls,
                 finishReason = finishReason,
                 modelId = modelId ?: defaultModel,
                 usage = usage
@@ -192,7 +241,11 @@ class OpenAICompatibleAgentLlmClient(
         val choice = json.optJSONArray("choices")?.optJSONObject(0) ?: return LlmStreamChunk(usage = usage)
         val finishReason = choice.optString("finish_reason").takeIf { it.isNotBlank() && it != "null" }
         val delta = choice.optJSONObject("delta") ?: JSONObject()
-        val text = delta.optString("content").takeIf { it.isNotEmpty() }
+        
+        // 关键修复：同时支持 content 和 reasoning_content，并严格过滤 "null" 字符串
+        val text = delta.optStringSafe("content").takeIf { it.isNotEmpty() }
+        val reasoning = delta.optStringSafe("reasoning_content").takeIf { it.isNotEmpty() }
+        
         val chunks = mutableListOf<LlmToolCallChunk>()
         val toolArray = delta.optJSONArray("tool_calls")
         if (toolArray != null) {
@@ -218,6 +271,7 @@ class OpenAICompatibleAgentLlmClient(
         }
         return LlmStreamChunk(
             content = text,
+            reasoningContent = reasoning,
             finishReason = finishReason,
             toolCalls = chunks.ifEmpty { null },
             usage = usage
@@ -227,6 +281,9 @@ class OpenAICompatibleAgentLlmClient(
     private fun ChatMessage.toJson(): JSONObject = JSONObject().apply {
         put("role", role)
         put("content", content)
+        if (reasoningContent != null) {
+            put("reasoning_content", reasoningContent)
+        }
         if (role == "tool") put("tool_call_id", toolCallId)
         if (!toolCalls.isNullOrEmpty()) {
             put("tool_calls", JSONArray(toolCalls.map { call ->
@@ -257,6 +314,7 @@ class OpenAICompatibleAgentLlmClient(
     }
 
     private fun JSONObject.optStringSafe(name: String, fallback: String = ""): String {
+        if (!this.has(name)) return fallback
         val value = opt(name)
         return if (value == null || value == JSONObject.NULL || value.toString() == "null") {
             fallback

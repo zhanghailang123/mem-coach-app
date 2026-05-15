@@ -224,6 +224,8 @@ class ExamToolHandler(
                         put("stem", q.stem)
                         put("source_file", q.sourceFile)
                         put("source_page", q.sourcePage)
+                        put("parse_confidence", q.parseConfidence.toDouble())
+                        put("parse_status", q.parseStatus)
                     })
                 }
             })
@@ -248,7 +250,11 @@ class ExamToolHandler(
             put("source", buildJsonObject {
                 put("file", question.sourceFile)
                 put("page", question.sourcePage)
+                putNullable("text", question.sourceText)
             })
+            put("parse_confidence", question.parseConfidence.toDouble())
+            put("parse_status", question.parseStatus)
+            putNullable("parse_notes", question.parseNotes)
         }.toString()
     }
 
@@ -388,6 +394,9 @@ class ExamToolHandler(
                         put("stem", q.stem)
                         put("type", q.type)
                         putNullable("topic", q.topic)
+                        put("source_file", q.sourceFile)
+                        put("source_page", q.sourcePage)
+                        put("parse_confidence", q.parseConfidence.toDouble())
                     })
                 }
             })
@@ -426,6 +435,8 @@ class ExamToolHandler(
         fun put(key: String, element: JsonElement)
         fun put(key: String, value: String) = put(key, JsonPrimitive(value))
         fun put(key: String, value: Int) = put(key, JsonPrimitive(value))
+        fun put(key: String, value: Float) = put(key, JsonPrimitive(value))
+        fun put(key: String, value: Double) = put(key, JsonPrimitive(value))
         fun put(key: String, value: Boolean) = put(key, JsonPrimitive(value))
         fun putNullable(key: String, value: String?) = put(key, value?.let { JsonPrimitive(it) } ?: JsonNull)
         fun build(): JsonObject
