@@ -1,5 +1,7 @@
 package cn.com.memcoach.agent.skill
 
+import cn.com.memcoach.agent.AgentTraceLogger
+
 /**
  * 学习 Skill 加载器
  * 
@@ -23,10 +25,33 @@ class StudySkillLoader {
      * @return 格式化后的指令文本
      */
     fun loadInstructions(skill: StudySkill): String {
+        val traceId = AgentTraceLogger.newTraceId("skill_load")
         val content = skill.instructions
+        AgentTraceLogger.event(
+            "skill_load_start",
+            mapOf(
+                "trace_id" to traceId,
+                "skill_id" to skill.id,
+                "skill_name" to skill.name,
+                "enabled" to skill.isEnabled,
+                "builtin" to skill.isBuiltin,
+                "priority" to skill.priority,
+                "instructions_length" to content.length,
+                "supported_scenes" to skill.supportedScenes.map { it.name },
+                "tool_preferences" to skill.toolPreferences
+            )
+        )
         
         // 如果内容为空，返回空字符串
         if (content.isBlank()) {
+            AgentTraceLogger.event(
+                "skill_load_empty",
+                mapOf(
+                    "trace_id" to traceId,
+                    "skill_id" to skill.id,
+                    "skill_name" to skill.name
+                )
+            )
             return ""
         }
         
@@ -38,7 +63,19 @@ class StudySkillLoader {
         }
         
         // 格式化为 system prompt 片段
-        return formatSkillForPrompt(skill, truncatedContent)
+        val formatted = formatSkillForPrompt(skill, truncatedContent)
+        AgentTraceLogger.event(
+            "skill_load_success",
+            mapOf(
+                "trace_id" to traceId,
+                "skill_id" to skill.id,
+                "skill_name" to skill.name,
+                "truncated" to (content.length > MAX_SKILL_CONTENT_LENGTH),
+                "formatted_length" to formatted.length,
+                "formatted_preview" to formatted
+            )
+        )
+        return formatted
     }
     
     /**

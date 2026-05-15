@@ -102,9 +102,61 @@ class AgentToolRouter {
      * @throws NoSuchElementException 工具未注册
      */
     suspend fun execute(toolName: String, arguments: String): String {
+        val traceId = AgentTraceLogger.newTraceId("tool")
+        val startedAt = System.currentTimeMillis()
         val handler = handlerMap[toolName]
-            ?: throw NoSuchElementException("工具未注册: $toolName")
-        return handler.execute(toolName, arguments)
+            ?: run {
+                AgentTraceLogger.event(
+                    "tool_error",
+                    mapOf(
+                        "trace_id" to traceId,
+                        "tool_name" to toolName,
+                        "arguments_length" to arguments.length,
+                        "arguments_preview" to arguments,
+                        "error_type" to "NoSuchElementException",
+                        "error_message" to "工具未注册: $toolName"
+                    )
+                )
+                throw NoSuchElementException("工具未注册: $toolName")
+            }
+        AgentTraceLogger.event(
+            "tool_start",
+            mapOf(
+                "trace_id" to traceId,
+                "tool_name" to toolName,
+                "handler" to handler::class.java.simpleName,
+                "arguments_length" to arguments.length,
+                "arguments_preview" to arguments
+            )
+        )
+        return try {
+            val result = handler.execute(toolName, arguments)
+            AgentTraceLogger.event(
+                "tool_success",
+                mapOf(
+                    "trace_id" to traceId,
+                    "tool_name" to toolName,
+                    "handler" to handler::class.java.simpleName,
+                    "duration_ms" to (System.currentTimeMillis() - startedAt),
+                    "result_length" to result.length,
+                    "result_preview" to result
+                )
+            )
+            result
+        } catch (e: Exception) {
+            AgentTraceLogger.event(
+                "tool_error",
+                mapOf(
+                    "trace_id" to traceId,
+                    "tool_name" to toolName,
+                    "handler" to handler::class.java.simpleName,
+                    "duration_ms" to (System.currentTimeMillis() - startedAt),
+                    "error_type" to e::class.java.simpleName,
+                    "error_message" to e.message
+                )
+            )
+            throw e
+        }
     }
 
     /**

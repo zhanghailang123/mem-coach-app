@@ -100,6 +100,19 @@ class AgentOrchestrator(
      * @return Flow<AgentEvent> SSE 事件流，供 Flutter UI 实时展示
      */
     suspend fun run(input: AgentInput): Flow<AgentEvent> = channelFlow {
+        val traceId = AgentTraceLogger.newTraceId("agent_run")
+        val runStartedAt = System.currentTimeMillis()
+        AgentTraceLogger.event(
+            "agent_run_start",
+            mapOf(
+                "trace_id" to traceId,
+                "user_message_length" to input.userMessage.length,
+                "user_message_preview" to input.userMessage,
+                "history_count" to input.conversationHistory.size,
+                "max_rounds" to input.maxRounds,
+                "model_override" to input.modelOverride
+            )
+        )
         val messages = mutableListOf<ChatMessage>()
         var eventSeq = 0  // 事件序列号，用于前端去重
 
@@ -124,14 +137,46 @@ class AgentOrchestrator(
             
             // 识别学习场景
             val scene = sceneRecognizer.recognize(input.userMessage, input.context)
+            AgentTraceLogger.event(
+                "skill_scene_recognized",
+                mapOf(
+                    "trace_id" to traceId,
+                    "scene" to scene.name,
+                    "scene_display_name" to sceneRecognizer.getSceneDisplayName(scene)
+                )
+            )
             
             // 匹配最合适的 Skill
             val matchedSkills = skillMatcher.match(scene, input.context)
+            AgentTraceLogger.event(
+                "skill_matched",
+                mapOf(
+                    "trace_id" to traceId,
+                    "scene" to scene.name,
+                    "matched_count" to matchedSkills.size,
+                    "skills" to matchedSkills.map { result ->
+                        mapOf(
+                            "id" to result.skill.id,
+                            "name" to result.skill.name,
+                            "confidence" to result.confidence,
+                            "trigger_reason" to result.triggerReason
+                        )
+                    }
+                )
+            )
             
             // 加载匹配 Skill 的指令
             val instructions = matchedSkills.joinToString("\n\n---\n\n") { result ->
                 skillLoader.loadInstructions(result.skill)
             }
+            AgentTraceLogger.event(
+                "skill_injected",
+                mapOf(
+                    "trace_id" to traceId,
+                    "instructions_length" to instructions.length,
+                    "instructions_preview" to instructions
+                )
+            )
             
             // 发送场景识别事件（用于 UI 展示）
             send(AgentEvent.StateChanged(scene.name, sceneRecognizer.getSceneDisplayName(scene)))
@@ -167,6 +212,7 @@ class AgentOrchestrator(
         // ─────── ReAct 主循环 ───────
         while (round < input.maxRounds) {
             round++
+            val roundStartedAt = System.currentTimeMillis()
 
             // 发送思考开始事件
             send(AgentEvent.ThinkingStart(round, reasoningEffort.name.lowercase()))
@@ -174,6 +220,17 @@ class AgentOrchestrator(
             // 调用 LLM（流式 + 工具定义，根据状态过滤工具）
             val accumulator = AgentLlmStreamAccumulator()
             val toolDefinitions = getFilteredToolDefinitions(currentState)
+            AgentTraceLogger.event(
+                "agent_round_start",
+                mapOf(
+                    "trace_id" to traceId,
+                    "round" to round,
+                    "reasoning_effort" to reasoningEffort.name.lowercase(),
+                    "messages_count" to messages.size,
+                    "tools_count" to toolDefinitions.size,
+                    "tools" to AgentTraceLogger.summarizeTools(toolDefinitions)
+                )
+            )
 
             // 优先使用路由器（根据任务复杂度自动选择模型），否则回退到直接客户端
             if (llmRouter != null) {
@@ -212,8 +269,41 @@ class AgentOrchestrator(
                 }
             }
 
+            AgentTraceLogger.event(
+                "agent_round_llm_result",
+                mapOf(
+                    "trace_id" to traceId,
+                    "round" to round,
+                    "duration_ms" to (System.currentTimeMillis() - roundStartedAt),
+                    "content_length" to accumulator.content.length,
+                    "content_preview" to accumulator.content,
+                    "tool_calls_count" to accumulator.toolCalls.size,
+                    "tool_calls" to accumulator.toolCalls.map { call ->
+                        mapOf(
+                            "id" to call.id,
+                            "name" to call.name,
+                            "arguments_length" to call.arguments.length,
+                            "arguments_preview" to call.arguments
+                        )
+                    },
+                    "prompt_tokens" to accumulator.promptTokens,
+                    "completion_tokens" to accumulator.completionTokens
+                )
+            )
+
             // 判断 LLM 是否调用工具
             if (!accumulator.isToolCall()) {
+                AgentTraceLogger.event(
+                    "agent_run_complete",
+                    mapOf(
+                        "trace_id" to traceId,
+                        "duration_ms" to (System.currentTimeMillis() - runStartedAt),
+                        "rounds" to round,
+                        "finish_reason" to "final_answer",
+                        "content_length" to accumulator.content.length,
+                        "content_preview" to accumulator.content
+                    )
+                )
                 // 无工具调用 → 输出最终回复
                 send(AgentEvent.ChatMessage(accumulator.content, isFinal = true))
                 send(
@@ -262,6 +352,18 @@ class AgentOrchestrator(
 
                 // 重试机制：最多3次
                 for (attempt in 1..MAX_RETRY_ATTEMPTS) {
+                    AgentTraceLogger.event(
+                        "agent_tool_attempt",
+                        mapOf(
+                            "trace_id" to traceId,
+                            "round" to round,
+                            "tool_call_id" to toolCall.id,
+                            "tool_name" to toolName,
+                            "attempt" to attempt,
+                            "arguments_length" to arguments.length,
+                            "arguments_preview" to arguments
+                        )
+                    )
                     // 通知 UI：工具调用开始
                     send(AgentEvent.ToolCallStart(toolName, arguments, toolCall.id))
 
@@ -316,6 +418,15 @@ class AgentOrchestrator(
         }
 
         // 超过最大轮次 → 强制结束
+        AgentTraceLogger.event(
+            "agent_run_complete",
+            mapOf(
+                "trace_id" to traceId,
+                "duration_ms" to (System.currentTimeMillis() - runStartedAt),
+                "rounds" to round,
+                "finish_reason" to "max_rounds"
+            )
+        )
         send(
             AgentEvent.Error(
                 "已达到最大推理轮次（${input.maxRounds}），请尝试更简洁的问题。"

@@ -133,6 +133,17 @@ class OpenAICompatibleAgentLlmClient(
             )
         } catch (e: Exception) {
             Log.e(TAG, "streamTurn 异常", e)
+            AgentTraceLogger.event(
+                "llm_error",
+                mapOf(
+                    "trace_id" to traceId,
+                    "mode" to "stream",
+                    "model" to (modelId ?: defaultModel),
+                    "duration_ms" to (System.currentTimeMillis() - startedAt),
+                    "error_type" to e::class.java.simpleName,
+                    "error_message" to e.message
+                )
+            )
             val message = friendlyError(e)
             onChunk(LlmStreamChunk(content = "\n[$message]", finishReason = "error"))
             LlmTurnResult(
@@ -144,14 +155,27 @@ class OpenAICompatibleAgentLlmClient(
     }
 
     override suspend fun completeTurn(messages: List<ChatMessage>, tools: List<Map<String, Any>>?, modelId: String?): LlmTurnResult = withContext(Dispatchers.IO) {
+        val traceId = AgentTraceLogger.newTraceId("llm_complete")
+        val startedAt = System.currentTimeMillis()
         try {
-            val request = buildRequest(messages, tools, modelId, stream = false)
+            val request = buildRequest(messages, tools, modelId, stream = false, traceId = traceId)
             val response = client.newCall(request).execute()
 
             response.use { resp ->
                 if (!resp.isSuccessful) {
                     val errorBody = resp.body?.string()?.compactForLog() ?: ""
                     Log.e(TAG, "LLM HTTP 错误: ${resp.code}, Body: $errorBody")
+                    AgentTraceLogger.event(
+                        "llm_error",
+                        mapOf(
+                            "trace_id" to traceId,
+                            "mode" to "complete",
+                            "model" to (modelId ?: defaultModel),
+                            "http_code" to resp.code,
+                            "duration_ms" to (System.currentTimeMillis() - startedAt),
+                            "error_body" to errorBody
+                        )
+                    )
                     error("LLM 请求失败：HTTP ${resp.code} $errorBody")
                 }
 
@@ -161,16 +185,53 @@ class OpenAICompatibleAgentLlmClient(
                     ?: error("LLM 返回为空：choices 缺失")
                 val message = choice.optJSONObject("message") ?: JSONObject()
                 val toolCalls = parseToolCalls(message.optJSONArray("tool_calls"))
+                val usage = json.optJSONObject("usage")?.toUsage()
+                val content = message.optStringSafe("content", "")
+                val finishReason = choice.optStringSafe("finish_reason").takeIf { it.isNotBlank() }
+                    ?: message.optStringSafe("finish_reason").takeIf { it.isNotBlank() }
+                AgentTraceLogger.event(
+                    "llm_complete_response",
+                    mapOf(
+                        "trace_id" to traceId,
+                        "model" to json.optStringSafe("model", modelId ?: defaultModel),
+                        "duration_ms" to (System.currentTimeMillis() - startedAt),
+                        "finish_reason" to finishReason,
+                        "content_length" to content.length,
+                        "content_preview" to content,
+                        "tool_calls" to toolCalls.map { call ->
+                            mapOf(
+                                "id" to call.id,
+                                "name" to call.name,
+                                "arguments_length" to call.arguments.length,
+                                "arguments_preview" to call.arguments
+                            )
+                        },
+                        "prompt_tokens" to usage?.promptTokens,
+                        "completion_tokens" to usage?.completionTokens,
+                        "raw_response_preview" to body
+                    )
+                )
                 LlmTurnResult(
-                    content = message.optStringSafe("content", ""),
+                    content = content,
                     toolCalls = toolCalls,
-                    finishReason = message.optStringSafe("finish_reason").takeIf { it.isNotBlank() },
+                    finishReason = finishReason,
                     modelId = json.optStringSafe("model", modelId ?: defaultModel),
-                    usage = json.optJSONObject("usage")?.toUsage()
+                    usage = usage
                 )
             }
         } catch (e: Exception) {
             Log.e(TAG, "completeTurn 异常", e)
+            AgentTraceLogger.event(
+                "llm_error",
+                mapOf(
+                    "trace_id" to traceId,
+                    "mode" to "complete",
+                    "model" to (modelId ?: defaultModel),
+                    "duration_ms" to (System.currentTimeMillis() - startedAt),
+                    "error_type" to e::class.java.simpleName,
+                    "error_message" to e.message
+                )
+            )
             LlmTurnResult(
                 content = "[${friendlyError(e)}]",
                 finishReason = "error",
@@ -185,7 +246,7 @@ class OpenAICompatibleAgentLlmClient(
 
     override fun getModelDisplayName(modelId: String): String = modelId
 
-    private fun buildRequest(messages: List<ChatMessage>, tools: List<Map<String, Any>>?, modelId: String?, stream: Boolean): Request {
+    private fun buildRequest(messages: List<ChatMessage>, tools: List<Map<String, Any>>?, modelId: String?, stream: Boolean, traceId: String): Request {
         val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
         require(normalizedBaseUrl.isNotBlank()) { "LLM baseUrl 不能为空" }
         require(defaultModel.isNotBlank()) { "LLM defaultModel 不能为空" }
@@ -218,6 +279,21 @@ class OpenAICompatibleAgentLlmClient(
 
         val payloadStr = payload.toString()
         Log.d(TAG, "请求 Payload: $payloadStr")
+        AgentTraceLogger.event(
+            "llm_request",
+            mapOf(
+                "trace_id" to traceId,
+                "model" to payload.optStringSafe("model", modelId ?: defaultModel),
+                "stream" to stream,
+                "url" to url,
+                "messages_count" to messages.size,
+                "messages" to AgentTraceLogger.summarizeMessages(messages),
+                "tools_count" to tools.orEmpty().size,
+                "tools" to AgentTraceLogger.summarizeTools(tools),
+                "payload_sha256" to AgentTraceLogger.sha256(payloadStr),
+                "payload_preview" to payloadStr
+            )
+        )
 
         return Request.Builder()
             .url(url)
