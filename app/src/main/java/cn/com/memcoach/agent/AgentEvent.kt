@@ -12,25 +12,35 @@ package cn.com.memcoach.agent
  */
 sealed class AgentEvent {
     /** 思考开始（新一轮推理） */
-    data class ThinkingStart(val round: Int) : AgentEvent()
+    data class ThinkingStart(val round: Int, val effort: String = "medium") : AgentEvent()
+
 
     /** 思考内容流式更新 */
     data class ThinkingUpdate(val content: String) : AgentEvent()
 
     /** 工具调用开始 */
-    data class ToolCallStart(val toolName: String, val arguments: String) : AgentEvent()
+    data class ToolCallStart(val toolName: String, val arguments: String, val toolCallId: String? = null) : AgentEvent()
 
     /** 工具调用完成 */
-    data class ToolCallComplete(val toolName: String, val result: String) : AgentEvent()
+    data class ToolCallComplete(val toolName: String, val result: String, val toolCallId: String? = null) : AgentEvent()
 
     /** 工具调用失败 */
     data class ToolCallError(val toolName: String, val error: String) : AgentEvent()
+
+    /** 工具调用重试 */
+    data class ToolCallRetry(val toolName: String, val attempt: Int, val error: String) : AgentEvent()
 
     /** 聊天消息（最终回复或中间输出） */
     data class ChatMessage(val content: String, val isFinal: Boolean = false) : AgentEvent()
 
     /** Self-Reflection 检查点触发 */
     data class ReflectionCheck(val round: Int) : AgentEvent()
+
+    /** 学习状态变更 */
+    data class StateChanged(val state: String, val stateName: String) : AgentEvent()
+
+    /** 上下文压缩完成 */
+    data class ContextCompacted(val previousPromptTokens: Int) : AgentEvent()
 
     /** Agent 执行完成 */
     data class Complete(val result: AgentResult) : AgentEvent()

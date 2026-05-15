@@ -4,17 +4,22 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import cn.com.memcoach.data.dao.*
 import cn.com.memcoach.data.entity.*
 
 /**
  * MEM Coach 主数据库
  *
- * 使用 Room 持久化框架，包含 4 张核心表：
+ * 使用 Room 持久化框架，包含 7 张核心表：
  * - exam_questions：真题
  * - knowledge_nodes / knowledge_edges：知识图谱
  * - user_mastery：用户掌握度
  * - study_records：学习记录
+ * - pdf_documents：PDF 文档元数据
+ * - conversations：聊天会话（v3 新增）
+ * - chat_messages：聊天消息（v3 新增）
  *
  * 数据库文件位于：{context.filesDir}/databases/mem_coach.db
  * 版本号从 1 开始，后续通过 Migration 升级。
@@ -25,9 +30,13 @@ import cn.com.memcoach.data.entity.*
         KnowledgeNode::class,
         KnowledgeEdge::class,
         UserMastery::class,
-        StudyRecord::class
+        StudyRecord::class,
+        PdfDocument::class,
+        ConversationEntity::class,
+        ChatMessageEntity::class
     ],
-    version = 1,
+    version = 4,
+
     exportSchema = false  // MVP 阶段不导出 schema，后续可开启
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -47,6 +56,15 @@ abstract class AppDatabase : RoomDatabase() {
     /** 学习记录 DAO */
     abstract fun studyRecordDao(): StudyRecordDao
 
+    /** PDF 文档 DAO */
+    abstract fun pdfDocumentDao(): PdfDocumentDao
+
+    /** 会话 DAO */
+    abstract fun conversationDao(): ConversationDao
+
+    /** 聊天消息 DAO */
+    abstract fun chatMessageDao(): ChatMessageDao
+
     companion object {
         private const val DATABASE_NAME = "mem_coach.db"
 
@@ -54,7 +72,72 @@ abstract class AppDatabase : RoomDatabase() {
         private var INSTANCE: AppDatabase? = null
 
         /**
+         * 从版本 2 升级到版本 3 的 Migration
+         * 
+         * 新增会话表和聊天消息表，支持聊天记录持久化。
+         */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // 创建会话表
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `conversations` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `user_id` TEXT NOT NULL DEFAULT 'default',
+                        `title` TEXT NOT NULL DEFAULT '新对话',
+                        `summary` TEXT,
+                        `message_count` INTEGER NOT NULL DEFAULT 0,
+                        `is_active` INTEGER NOT NULL DEFAULT 1,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL
+                    )
+                """)
+                
+                // 创建会话表索引
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_conversations_user_id` ON `conversations` (`user_id`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_conversations_created_at` ON `conversations` (`created_at`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_conversations_updated_at` ON `conversations` (`updated_at`)")
+                
+                // 创建聊天消息表
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `chat_messages` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `conversation_id` INTEGER NOT NULL,
+                        `role` TEXT NOT NULL,
+                        `content` TEXT NOT NULL,
+                        `tool_name` TEXT,
+                        `tool_result` TEXT,
+                        `tool_status` TEXT,
+                        `thinking_content` TEXT,
+                        `thinking_stage` INTEGER,
+                        `is_streaming` INTEGER NOT NULL DEFAULT 0,
+                        `token_count` INTEGER NOT NULL DEFAULT 0,
+                        `created_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`conversation_id`) REFERENCES `conversations`(`id`) ON DELETE CASCADE
+                    )
+                """)
+                
+                // 创建聊天消息表索引
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_chat_messages_conversation_id` ON `chat_messages` (`conversation_id`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_chat_messages_role` ON `chat_messages` (`role`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_chat_messages_created_at` ON `chat_messages` (`created_at`)")
+            }
+        }
+
+        /**
+         * 从版本 3 升级到版本 4 的 Migration。
+         *
+         * 为聊天消息补充 OpenAI function calling 历史恢复所需字段。
+         */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `tool_call_id` TEXT")
+                database.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `tool_calls_json` TEXT")
+            }
+        }
+
+        /**
          * 获取数据库单例
+
          *
          * @param context Application Context
          * @return AppDatabase 实例
@@ -71,7 +154,9 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 DATABASE_NAME
             )
-                // MVP 阶段使用 destructive migration，开发中重建数据库
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+
+                // MVP 阶段使用 destructive migration 作为兜底，开发中重建数据库
                 // 正式发布后改用 Migration 策略
                 .fallbackToDestructiveMigration()
                 .build()

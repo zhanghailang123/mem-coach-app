@@ -102,7 +102,6 @@ class KnowledgeToolHandler(
     },
     "depth": {
       "type": "integer",
-      "default": 2,
       "description": "展开深度，1=仅直接子节点，2=子节点+孙节点"
     }
   },

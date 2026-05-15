@@ -20,7 +20,7 @@ class AgentLlmStreamAccumulator {
     /** 累积的工具调用列表 */
     private val _toolCalls = mutableListOf<ToolCallAccumulator>()
     val toolCalls: List<ToolCall>
-        get() = _toolCalls.map { it.toToolCall() }
+        get() = _toolCalls.mapNotNull { it.toToolCallOrNull() }
 
     /** 当前正在累积的工具调用 index */
     private var currentToolCallIndex: Int? = null
@@ -118,8 +118,8 @@ class AgentLlmStreamAccumulator {
         }
     }
 
-    /** 是否检测到工具调用 */
-    fun isToolCall(): Boolean = _toolCalls.isNotEmpty()
+    /** 是否检测到有效工具调用 */
+    fun isToolCall(): Boolean = toolCalls.isNotEmpty()
 
     /** 生成 assistant 的 ChatMessage（包含 tool_calls） */
     fun toAssistantMessage(): ChatMessage {
@@ -149,11 +149,14 @@ class AgentLlmStreamAccumulator {
         var functionName: String = ""
         val argumentsBuilder = StringBuilder()
 
-        fun toToolCall(): ToolCall = ToolCall(
-            id = id,
-            name = functionName,
-            arguments = argumentsBuilder.toString()
-        )
+        fun toToolCallOrNull(): ToolCall? {
+            val name = functionName.takeIf { it.isNotBlank() && it != "null" } ?: return null
+            return ToolCall(
+                id = id.ifBlank { "tool_${name}_${hashCode()}" },
+                name = name,
+                arguments = argumentsBuilder.toString().ifBlank { "{}" }
+            )
+        }
     }
 }
 

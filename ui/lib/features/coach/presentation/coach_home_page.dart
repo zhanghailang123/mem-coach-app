@@ -1,71 +1,169 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../../core/native/mem_coach_native_bridge.dart';
+import '../widgets/chat_sheet.dart';
 import '../widgets/coach_shell_card.dart';
 import '../widgets/quick_action_grid.dart';
 import '../widgets/study_mission_card.dart';
 
-class CoachHomePage extends StatelessWidget {
+/// 首页数据模型
+class HomeData {
+  const HomeData({
+    this.streak = 0,
+    this.daysUntilExam = 0,
+    this.todayTotal = 0,
+    this.todayCorrect = 0,
+    this.todayAccuracy = -1.0,
+    this.overallAccuracy = -1.0,
+    this.dueReviewCount = 0,
+    this.masteredCount = 0,
+    this.totalKnowledgeCount = 0,
+    this.weakPoints = const [],
+    this.briefing = '',
+  });
+
+  final int streak;
+  final int daysUntilExam;
+  final int todayTotal;
+  final int todayCorrect;
+  final double todayAccuracy;
+  final double overallAccuracy;
+  final int dueReviewCount;
+  final int masteredCount;
+  final int totalKnowledgeCount;
+  final List<Map<String, dynamic>> weakPoints;
+  final String briefing;
+
+  factory HomeData.fromMap(Map<String, dynamic> map) {
+    return HomeData(
+      streak: (map['streak'] as num?)?.toInt() ?? 0,
+      daysUntilExam: (map['days_until_exam'] as num?)?.toInt() ?? 0,
+      todayTotal: (map['today_total'] as num?)?.toInt() ?? 0,
+      todayCorrect: (map['today_correct'] as num?)?.toInt() ?? 0,
+      todayAccuracy: (map['today_accuracy'] as num?)?.toDouble() ?? -1.0,
+      overallAccuracy: (map['overall_accuracy'] as num?)?.toDouble() ?? -1.0,
+      dueReviewCount: (map['due_review_count'] as num?)?.toInt() ?? 0,
+      masteredCount: (map['mastered_count'] as num?)?.toInt() ?? 0,
+      totalKnowledgeCount: (map['total_knowledge_count'] as num?)?.toInt() ?? 0,
+      weakPoints: (map['weak_points'] as List<dynamic>?)
+              ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .toList() ??
+          const [],
+      briefing: map['briefing'] as String? ?? '',
+    );
+  }
+
+  bool get hasData => todayTotal > 0 || streak > 0 || masteredCount > 0;
+}
+
+class CoachHomePage extends StatefulWidget {
   const CoachHomePage({super.key});
 
   @override
+  State<CoachHomePage> createState() => _CoachHomePageState();
+}
+
+class _CoachHomePageState extends State<CoachHomePage> {
+  Future<HomeData>? _dataFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _dataFuture = _loadData();
+  }
+
+  Future<HomeData> _loadData() async {
+    try {
+      final map = await MemCoachNativeBridge.getHomeData();
+      return HomeData.fromMap(map);
+    } catch (e) {
+      debugPrint('加载首页数据失败: $e');
+      return const HomeData();
+    }
+  }
+
+  Future<void> _onRefresh() async {
+    setState(() {
+      _dataFuture = _loadData();
+    });
+    await _dataFuture;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: _Header(),
+    return FutureBuilder<HomeData>(
+      future: _dataFuture,
+      builder: (context, snapshot) {
+        final data = snapshot.data ?? const HomeData();
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+
+        return Scaffold(
+          body: SafeArea(
+            child: RefreshIndicator(
+              onRefresh: _onRefresh,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                      child: _Header(data: data),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                      child: _CoachBriefing(data: data, isLoading: isLoading),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
+                      child: StudyMissionCard(),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
+                      child: QuickActionGrid(),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                      child: _InsightStrip(data: data),
+                    ),
+                  ),
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                        child: _ChatTriggerBar(),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: _CoachBriefing(),
-              ),
-            ),
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: StudyMissionCard(),
-              ),
-            ),
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: QuickActionGrid(),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: _InsightStrip(),
-              ),
-            ),
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                  child: _ChatBar(),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
 
 class _Header extends StatelessWidget {
+  const _Header({required this.data});
+
+  final HomeData data;
+
   @override
   Widget build(BuildContext context) {
+    final streakText = data.streak > 0 ? '连续学习 ${data.streak} 天' : '开始你的学习之旅';
+    final examText = data.daysUntilExam > 0 ? '距考试 ${data.daysUntilExam} 天' : '';
+
     return Row(
       children: [
         Container(
@@ -80,18 +178,35 @@ class _Header extends StatelessWidget {
           child: const Icon(Icons.auto_awesome_rounded, color: Colors.white),
         ),
         const SizedBox(width: 12),
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('MEM Coach', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-              SizedBox(height: 2),
-              Text('距考试 226 天 · 连续学习 12 天', style: TextStyle(color: Colors.black54)),
+              const Text('MEM Coach', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 2),
+              Text(
+                [if (examText.isNotEmpty) examText, streakText].join(' · '),
+                style: const TextStyle(color: Colors.black54),
+              ),
             ],
           ),
         ),
         IconButton.filledTonal(
-          onPressed: () {},
+          onPressed: () {
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('通知中心'),
+                content: const Text('暂无新通知。\n\n通知功能将在后续版本中完善，包括：\n• 学习提醒\n• 复习提醒\n• 成就通知'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('知道了'),
+                  ),
+                ],
+              ),
+            );
+          },
           icon: const Icon(Icons.notifications_none_rounded),
         ),
       ],
@@ -100,8 +215,19 @@ class _Header extends StatelessWidget {
 }
 
 class _CoachBriefing extends StatelessWidget {
+  const _CoachBriefing({required this.data, required this.isLoading});
+
+  final HomeData data;
+  final bool isLoading;
+
   @override
   Widget build(BuildContext context) {
+    final briefingText = isLoading
+        ? '正在分析你的学习数据...'
+        : data.briefing.isNotEmpty
+            ? data.briefing
+            : '欢迎回来！点击下方开始你的学习之旅。';
+
     return CoachShellCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -118,35 +244,95 @@ class _CoachBriefing extends StatelessWidget {
                 child: Icon(Icons.smart_toy_rounded, color: Theme.of(context).colorScheme.primary),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  '上午好，我看了你的学习曲线。',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                  _getGreeting(),
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 14),
-          const Text(
-            '昨天你逻辑题正确率 67%，但「否定后件式」连续错了 2 次。今天我不建议泛刷题，先用 5 道真题把这个点打穿。',
-            style: TextStyle(fontSize: 15.5, height: 1.55, color: Colors.black87),
+          Text(
+            briefingText,
+            style: const TextStyle(fontSize: 15.5, height: 1.55, color: Colors.black87),
           ),
+          if (!isLoading && data.dueReviewCount > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF3E0),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.schedule_rounded, size: 16, color: Color(0xFFE65100)),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${data.dueReviewCount} 个知识点待复习',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFFE65100),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 6) return '夜深了，注意休息。';
+    if (hour < 12) return '上午好，准备好学习了吗？';
+    if (hour < 14) return '中午好，适当休息一下。';
+    if (hour < 18) return '下午好，继续加油！';
+    if (hour < 22) return '晚上好，复习好时机。';
+    return '夜深了，注意休息。';
+  }
 }
 
 class _InsightStrip extends StatelessWidget {
+  const _InsightStrip({required this.data});
+
+  final HomeData data;
+
   @override
   Widget build(BuildContext context) {
+    // 预估分：基于正确率和练习量的简单估算，基准 130 + 加分
+    final estimatedScore = data.overallAccuracy >= 0
+        ? (130 + data.overallAccuracy * 40 + (data.todayTotal > 0 ? 6 : 0)).toInt()
+        : '--';
+
+    // 正确率
+    final accuracyText = data.todayAccuracy >= 0
+        ? '${(data.todayAccuracy * 100).toInt()}%'
+        : data.overallAccuracy >= 0
+            ? '${(data.overallAccuracy * 100).toInt()}%'
+            : '--';
+
+    // 正确率变化（相对全局来说今日的变化）
+    final accuracyDelta = data.todayAccuracy >= 0 && data.overallAccuracy >= 0
+        ? '${((data.todayAccuracy - data.overallAccuracy) * 100).toInt()}%'
+        : '今日';
+
+    // 待背
+    final reviewText = data.dueReviewCount > 0 ? '${data.dueReviewCount}' : '0';
+    final reviewDelta = data.dueReviewCount > 0 ? '待复习' : '已完成';
+
     return Row(
-      children: const [
-        Expanded(child: _MetricCard(title: '预估分', value: '156', delta: '+12')),
-        SizedBox(width: 12),
-        Expanded(child: _MetricCard(title: '正确率', value: '68%', delta: '+6%')),
-        SizedBox(width: 12),
-        Expanded(child: _MetricCard(title: '待背', value: '12', delta: '今日')),
+      children: [
+        Expanded(child: _MetricCard(title: '预估分', value: '$estimatedScore', delta: estimatedScore is int ? '+${(estimatedScore - 130).clamp(0, 99)}' : '--')),
+        const SizedBox(width: 12),
+        Expanded(child: _MetricCard(title: '正确率', value: accuracyText, delta: accuracyDelta)),
+        const SizedBox(width: 12),
+        Expanded(child: _MetricCard(title: '待复习', value: reviewText, delta: reviewDelta)),
       ],
     );
   }
@@ -182,237 +368,56 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
-class _ChatBar extends StatefulWidget {
-  @override
-  State<_ChatBar> createState() => _ChatBarState();
-}
-
-class _ChatBarState extends State<_ChatBar> {
-  final _controller = TextEditingController();
-  final List<_ChatMessage> _messages = [];
-  StreamSubscription<AgentNativeEvent>? _sub;
-  String _status = '';
-  bool _running = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _sub = MemCoachNativeBridge.agentEvents.listen(
-      _handleAgentEvent,
-      onError: (Object error) {
-        if (!mounted) return;
-        setState(() {
-          _running = false;
-          _status = '事件流异常：$error';
-        });
-      },
-    );
-  }
-
-  void _handleAgentEvent(AgentNativeEvent event) {
-    if (!mounted) return;
-    setState(() {
-      switch (event.type) {
-        case 'thinking_start':
-          _status = 'Agent 正在思考...';
-          _ensureAssistantMessage();
-          break;
-        case 'thinking_update':
-          _status = 'Agent 正在回复...';
-          _appendAssistantContent(event.content ?? '');
-          break;
-        case 'tool_start':
-          _status = '正在调用工具：${event.toolName ?? 'unknown'}';
-          break;
-        case 'tool_result':
-          _status = '工具调用完成：${event.toolName ?? 'unknown'}';
-          break;
-        case 'chat_message':
-          _setAssistantContent(event.content ?? '');
-          break;
-        case 'complete':
-          _running = false;
-          _status = '完成';
-          break;
-        case 'error':
-          _running = false;
-          _status = event.error ?? '执行失败';
-          _appendAssistantContent('\n${event.error ?? '执行失败'}');
-          break;
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _send() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty || _running) return;
-    setState(() {
-      _messages.add(_ChatMessage(role: _ChatRole.user, content: text));
-      _messages.add(const _ChatMessage(role: _ChatRole.assistant, content: ''));
-      _status = '启动 Agent...';
-      _running = true;
-      _controller.clear();
-    });
-    try {
-      await MemCoachNativeBridge.startAgentTurn(message: text);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _running = false;
-        _status = '启动失败：$error';
-        _appendAssistantContent('\n启动失败：$error');
-      });
-    }
-  }
-
-  Future<void> _cancel() async {
-    if (!_running) return;
-    setState(() => _status = '正在取消...');
-    try {
-      await MemCoachNativeBridge.cancelAgentTurn();
-      if (!mounted) return;
-      setState(() {
-        _running = false;
-        _status = '已取消';
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _status = '取消失败：$error');
-    }
-  }
-
-  void _ensureAssistantMessage() {
-    if (_messages.isEmpty || _messages.last.role != _ChatRole.assistant) {
-      _messages.add(const _ChatMessage(role: _ChatRole.assistant, content: ''));
-    }
-  }
-
-  void _appendAssistantContent(String content) {
-    if (content.isEmpty) return;
-    _ensureAssistantMessage();
-    final last = _messages.removeLast();
-    _messages.add(last.copyWith(content: last.content + content));
-  }
-
-  void _setAssistantContent(String content) {
-    _ensureAssistantMessage();
-    final last = _messages.removeLast();
-    _messages.add(last.copyWith(content: content.isEmpty ? last.content : content));
-  }
-
+/// 聊天触发条 - 点击后打开全屏聊天 Sheet
+class _ChatTriggerBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_messages.isNotEmpty || _status.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: CoachShellCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_status.isNotEmpty) Text(_status, style: const TextStyle(color: Colors.black54, fontSize: 12)),
-                  if (_messages.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 260),
-                      child: SingleChildScrollView(
-                        reverse: true,
-                        child: Column(
-                          children: _messages.map((message) => _ChatBubble(message: message)).toList(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+    return GestureDetector(
+      onTap: () => ChatSheet.show(context),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: Colors.black.withOpacity(0.06)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
             ),
-          ),
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: Colors.black.withOpacity(0.06)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  enabled: !_running,
-                  minLines: 1,
-                  maxLines: 3,
-                  decoration: const InputDecoration.collapsed(hintText: '问我：今天该怎么学？'),
-                  onSubmitted: (_) => _send(),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.auto_awesome_rounded,
+              color: Theme.of(context).colorScheme.primary,
+              size: 22,
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                '问我：今天该怎么学？',
+                style: TextStyle(
+                  color: Colors.black38,
+                  fontSize: 15,
                 ),
               ),
-              IconButton.filled(
-                onPressed: _running ? _cancel : _send,
-                icon: Icon(_running ? Icons.stop_rounded : Icons.send_rounded),
+            ),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+                shape: BoxShape.circle,
               ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-enum _ChatRole { user, assistant }
-
-class _ChatMessage {
-  const _ChatMessage({required this.role, required this.content});
-
-  final _ChatRole role;
-  final String content;
-
-  _ChatMessage copyWith({String? content}) {
-    return _ChatMessage(role: role, content: content ?? this.content);
-  }
-}
-
-class _ChatBubble extends StatelessWidget {
-  const _ChatBubble({required this.message});
-
-  final _ChatMessage message;
-
-  @override
-  Widget build(BuildContext context) {
-    final isUser = message.role == _ChatRole.user;
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        constraints: const BoxConstraints(maxWidth: 280),
-        decoration: BoxDecoration(
-          color: isUser ? Theme.of(context).colorScheme.primary : const Color(0xFFF4F6FA),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Text(
-          message.content.isEmpty ? '...' : message.content,
-          style: TextStyle(
-            color: isUser ? Colors.white : Colors.black87,
-            fontSize: 14.5,
-            height: 1.45,
-          ),
+              child: const Icon(
+                Icons.arrow_upward_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+          ],
         ),
       ),
     );

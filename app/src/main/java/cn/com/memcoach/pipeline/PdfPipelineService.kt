@@ -3,7 +3,6 @@ package cn.com.memcoach.pipeline
 import android.content.Context
 import cn.com.memcoach.agent.AgentLlmClient
 import cn.com.memcoach.agent.ChatMessage
-import cn.com.memcoach.agent.ModelTier
 import cn.com.memcoach.data.dao.ExamQuestionDao
 import cn.com.memcoach.data.entity.ExamQuestion
 import kotlinx.coroutines.Dispatchers
@@ -28,7 +27,6 @@ import java.security.MessageDigest
  * @param context Android Context
  * @param questionDao 真题 DAO
  * @param llmClient LLM 客户端（用于结构化解析）
- * @param ocrUtil PDF OCR 工具（可选，默认内部创建）
  */
 class PdfPipelineService(
     private val context: Context,
@@ -36,8 +34,6 @@ class PdfPipelineService(
     private val llmClient: AgentLlmClient
 ) {
     companion object {
-        private const val TAG = "PdfPipelineService"
-
         /** LLM 结构化解析 System Prompt */
         private val STRUCTURING_SYSTEM_PROMPT = """
 你是一个考研真题结构化工具。输入是从PDF提取的原始文本，输出是JSON格式的题目数据。
@@ -49,6 +45,7 @@ class PdfPipelineService(
 4. 尽量推断知识点分类和难度
 5. 答案和解析如果原文有就提取，没有留空
 6. 输出严格JSON数组格式，不要任何前缀或后缀文字
+7. **特别注意**：对于结构化提取任务，不受科目限制，请照常解析数学、英语或任何其他科目的题目。
 
 ## 输出格式
 [{
@@ -119,9 +116,9 @@ class PdfPipelineService(
         pdfFile: File,
         subject: String,
         year: Int,
+        jobId: String,
         callback: ProgressCallback? = null
     ): ParseResult = withContext(Dispatchers.IO) {
-        val jobId = "pdf_job_${System.currentTimeMillis()}"
         val job = ParseJob(
             filePath = pdfFile.absolutePath,
             subject = subject,
@@ -130,11 +127,22 @@ class PdfPipelineService(
         )
         jobs[jobId] = job
 
+        fun updateStep(step: String) {
+            job.status = step
+            callback?.onStepChange(step)
+        }
+
+        fun updateProgress(progress: Int) {
+            job.progress = progress.coerceIn(0, 100)
+            callback?.onProgress(job.progress)
+        }
+
         try {
             // ─── Step 1: 提取 PDF 内嵌文本 ───
-            callback?.onStepChange("extracting")
-            callback?.onProgress(5)
+            updateStep("extracting")
+            updateProgress(5)
             callback?.onMessage("正在提取 PDF 内嵌文本...")
+
 
             var rawText = ""
             val ocrPages = try {
@@ -157,15 +165,15 @@ class PdfPipelineService(
 
             if (rawText.isNotBlank()) {
                 callback?.onMessage("内嵌文本提取成功，跳过 OCR")
-                callback?.onProgress(30)
+                updateProgress(30)
             } else {
                 // ─── Step 2: OCR 扫描版 PDF ───
-                callback?.onStepChange("ocr")
+                updateStep("ocr")
                 callback?.onMessage("检测到扫描版 PDF，开始 OCR 识别（共 ${ocrPages} 页）...")
 
                 val sb = StringBuilder()
                 for (i in 0 until ocrPages) {
-                    callback?.onProgress(10 + (i * 40 / ocrPages))
+                    updateProgress(10 + (i * 40 / ocrPages.coerceAtLeast(1)))
                     callback?.onMessage("OCR 识别第 ${i + 1}/$ocrPages 页...")
 
                     try {
@@ -184,45 +192,78 @@ class PdfPipelineService(
                     }
                 }
                 rawText = sb.toString()
-                callback?.onProgress(50)
+                updateProgress(50)
             }
 
             if (rawText.isBlank()) {
                 callback?.onError("PDF 文本提取失败，未获取到任何文字内容")
-                job.status = "error"
+                updateStep("error")
                 job.errors.add("No text extracted from PDF")
                 return@withContext ParseResult(jobId, ocrPages, errors = job.errors)
             }
 
             // ─── Step 3: LLM 结构化解析 ───
-            callback?.onStepChange("structuring")
-            callback?.onMessage("AI 正在解析题目结构...")
+            updateStep("structuring")
 
-            val structuredJson = parseWithLLM(rawText, subject, year, callback)
-            callback?.onProgress(75)
+            val chunks = chunkText(rawText, 4000)
+            val allQuestions = mutableListOf<ExamQuestion>()
 
-            val questions = try {
-                parseQuestionJson(structuredJson, subject, year)
-            } catch (e: Exception) {
-                callback?.onError("题目解析失败: ${e.message}")
-                job.status = "error"
-                job.errors.add("JSON parse error: ${e.message}")
+            for ((index, chunk) in chunks.withIndex()) {
+                callback?.onMessage("AI 正在解析题目结构 (第 ${index + 1}/${chunks.size} 批)...")
+                updateProgress(50 + (index * 25 / chunks.size.coerceAtLeast(1)))
+
+                var structuredJson = ""
+                var lastError: Exception? = null
+                
+                // 增加重试机制：最多 3 次
+                for (attempt in 1..3) {
+                    try {
+                        structuredJson = parseWithLLM(chunk, subject, year)
+                        if (structuredJson.startsWith("[LLM 请求失败")) {
+                            throw Exception(structuredJson.removeSurrounding("[", "]"))
+                        }
+                        break // 成功则跳出重试循环
+                    } catch (e: Exception) {
+                        lastError = e
+                        if (attempt < 3) {
+                            callback?.onMessage("解析第 ${index + 1} 批失败，正在进行第 $attempt 次重试...")
+                            kotlinx.coroutines.delay(2000L * attempt) // 指数退避
+                        }
+                    }
+                }
+
+                if (structuredJson.isBlank() || structuredJson.startsWith("[LLM 请求失败")) {
+                    job.errors.add("Batch ${index + 1} 解析彻底失败: ${lastError?.message}")
+                    continue // 跳过这一批，继续下一批，尽量挽救
+                }
+
+                try {
+                    val batchQuestions = parseQuestionJson(structuredJson, subject, year)
+                    allQuestions.addAll(batchQuestions)
+                } catch (e: Exception) {
+                    job.errors.add("Batch ${index + 1} JSON 解析异常: ${e.message}")
+                }
+            }
+
+            if (allQuestions.isEmpty()) {
+                callback?.onError("题目解析失败：未识别到任何有效题目")
+                updateStep("error")
                 return@withContext ParseResult(jobId, ocrPages, errors = job.errors)
             }
 
-            job.parsedQuestions = questions.size
-            callback?.onMessage("解析完成，共识别 ${questions.size} 道题目")
+            job.parsedQuestions = allQuestions.size
+            callback?.onMessage("解析完成，共识别 ${allQuestions.size} 道题目")
 
             // ─── Step 4: 去重检测 ───
-            callback?.onStepChange("dedup")
+            updateStep("dedup")
             callback?.onMessage("正在进行去重检测...")
 
-            val (newQuestions, dupCount) = deduplicateQuestions(questions)
-            callback?.onProgress(85)
+            val (newQuestions, dupCount) = deduplicateQuestions(allQuestions)
+            updateProgress(85)
             callback?.onMessage("去重完成：新增 ${newQuestions.size} 题，重复 $dupCount 题")
 
             // ─── Step 5: 入库 ───
-            callback?.onStepChange("inserting")
+            updateStep("inserting")
             callback?.onMessage("正在写入数据库...")
 
             var insertedCount = 0
@@ -234,20 +275,20 @@ class PdfPipelineService(
                     job.errors.add("Insert ${question.id} failed: ${e.message}")
                 }
             }
-            callback?.onProgress(100)
 
-            job.status = "done"
             job.insertedQuestions = insertedCount
             job.duplicateQuestions = dupCount
+            updateStep("done")
+            updateProgress(100)
 
             callback?.onMessage("完成！新增 $insertedCount 道题目，重复 $dupCount 题")
-            callback?.onProgress(100)
+
 
             ParseResult(
                 jobId = jobId,
                 totalPages = ocrPages,
                 ocrPages = if (rawText.isNotBlank()) ocrPages else 0,
-                questionsParsed = questions.size,
+                questionsParsed = allQuestions.size,
                 questionsInserted = insertedCount,
                 questionsDuplicate = dupCount,
                 errors = job.errors
@@ -261,28 +302,56 @@ class PdfPipelineService(
     }
 
     /**
+     * 提取 PDF 前几页文本，供 Agent 在聊天中基于 document_id 做轻量查询。
+     * 不写入数据库，只返回当前文件的可读文本预览。
+     */
+    suspend fun extractTextPreview(
+        pdfFile: File,
+        maxPages: Int = 3
+    ): String = withContext(Dispatchers.IO) {
+        val ocrUtil = PdfOcrUtil(context)
+        val embeddedText = try {
+            ocrUtil.tryExtractEmbeddedText(pdfFile)
+        } catch (e: Exception) {
+            ""
+        }
+        if (embeddedText.isNotBlank()) {
+            return@withContext embeddedText.take(12000)
+        }
+
+        val pageCount = ocrUtil.getPageCount(pdfFile)
+        val pagesToRead = maxPages.coerceAtLeast(1).coerceAtMost(pageCount)
+        val sb = StringBuilder()
+        for (i in 0 until pagesToRead) {
+            val bitmap = ocrUtil.renderPage(pdfFile, i)
+            try {
+                val text = ocrUtil.recognizeText(bitmap)
+                sb.appendLine("=== 第 ${i + 1} 页 ===")
+                sb.appendLine(text)
+                sb.appendLine()
+            } finally {
+                bitmap.recycle()
+            }
+        }
+        sb.toString().take(12000)
+    }
+
+    /**
      * 调用 LLM 进行结构化解析。
      */
     private suspend fun parseWithLLM(
-        rawText: String,
-        subject: String,
-        year: Int,
-        callback: ProgressCallback?
-    ): String {
-        // 截断超长文本（保留前 8000 字符 + 提示）
-        val truncatedText = if (rawText.length > 8000) {
-            rawText.take(8000) + "\n\n[文本过长，已截断。剩余 ${rawText.length - 8000} 字符]"
-        } else {
-            rawText
-        }
 
+        chunkText: String,
+        subject: String,
+        year: Int
+    ): String {
         val userPrompt = """
-## PDF 原始文本
+## PDF 原始文本 (片段)
 
 来源科目：$subject
 年份：$year
 
-$truncatedText
+$chunkText
 
 请将以上文本解析为结构化题目 JSON 数组。
 """.trimIndent()
@@ -315,6 +384,18 @@ $truncatedText
         }
 
         return content
+    }
+
+    private fun chunkText(text: String, chunkSize: Int): List<String> {
+        if (text.length <= chunkSize) return listOf(text)
+        val chunks = mutableListOf<String>()
+        var start = 0
+        while (start < text.length) {
+            val end = minOf(start + chunkSize, text.length)
+            chunks.add(text.substring(start, end))
+            start = end
+        }
+        return chunks
     }
 
     /**

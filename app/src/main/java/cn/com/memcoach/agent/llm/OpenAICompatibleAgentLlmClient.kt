@@ -10,15 +10,18 @@ import cn.com.memcoach.agent.LlmToolCallFunction
 import cn.com.memcoach.agent.LlmTurnResult
 import cn.com.memcoach.agent.ModelTier
 import cn.com.memcoach.agent.ToolCall
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
+import java.util.concurrent.TimeUnit
 
 /** OpenAI Chat Completions 兼容客户端，适配 OpenAI、DeepSeek、通义千问兼容接口等。 */
 class OpenAICompatibleAgentLlmClient(
@@ -26,22 +29,41 @@ class OpenAICompatibleAgentLlmClient(
     private val apiKey: String,
     private val defaultModel: String
 ) : AgentLlmClient {
+    companion object {
+        private const val TAG = "LLM_CLIENT"
+        private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        private val SSE_MEDIA_TYPE = "text/event-stream; charset=utf-8".toMediaType()
+    }
+
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(300, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .connectionPool(okhttp3.ConnectionPool(5, 1, TimeUnit.MINUTES))
+        .build()
+
     override suspend fun streamTurn(
         messages: List<ChatMessage>,
         tools: List<Map<String, Any>>?,
         modelId: String?,
         onChunk: suspend (LlmStreamChunk) -> Unit
-    ): LlmTurnResult {
-        return withContext(Dispatchers.IO) {
-            var response: HttpURLConnection? = null
-            try {
-                response = postChat(messages, tools, modelId, stream = true)
-                val content = StringBuilder()
-                val toolCalls = mutableMapOf<Int, ToolCallBuilder>()
-                var finishReason: String? = null
-                var usage: LlmTokenUsage? = null
+    ): LlmTurnResult = withContext(Dispatchers.IO) {
+        try {
+            val request = buildRequest(messages, tools, modelId, stream = true)
+            val response = client.newCall(request).execute()
+            val content = StringBuilder()
+            val toolCalls = mutableMapOf<Int, ToolCallBuilder>()
+            var finishReason: String? = null
+            var usage: LlmTokenUsage? = null
 
-                val reader = BufferedReader(InputStreamReader(response.inputStream))
+            response.use { resp ->
+                if (!resp.isSuccessful) {
+                    val errorBody = resp.body?.string()?.compactForLog() ?: ""
+                    Log.e(TAG, "LLM HTTP 错误: ${resp.code}, Body: $errorBody")
+                    error("LLM 请求失败：HTTP ${resp.code} $errorBody")
+                }
+
+                val reader = BufferedReader(InputStreamReader(resp.body?.byteStream()))
                 var line: String?
                 while (reader.readLine().also { line = it } != null) {
                     val currentLine = line ?: continue
@@ -51,53 +73,60 @@ class OpenAICompatibleAgentLlmClient(
                     chunk.content?.let { content.append(it) }
                     onChunk(chunk)
                 }
-
-                LlmTurnResult(
-                    content = content.toString(),
-                    toolCalls = toolCalls.toSortedMap().values.mapNotNull { it.toToolCallOrNull() },
-                    finishReason = finishReason,
-                    modelId = modelId ?: defaultModel,
-                    usage = usage
-                )
-            } catch (e: Exception) {
-                val message = friendlyError(e)
-                onChunk(LlmStreamChunk(content = "\n[$message]", finishReason = "error"))
-                LlmTurnResult(
-                    content = "\n[$message]",
-                    finishReason = "error",
-                    modelId = modelId ?: defaultModel
-                )
-            } finally {
-                response?.disconnect()
             }
+
+            LlmTurnResult(
+                content = content.toString(),
+                toolCalls = toolCalls.toSortedMap().values.mapNotNull { it.toToolCallOrNull() },
+                finishReason = finishReason,
+                modelId = modelId ?: defaultModel,
+                usage = usage
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "streamTurn 异常", e)
+            val message = friendlyError(e)
+            onChunk(LlmStreamChunk(content = "\n[$message]", finishReason = "error"))
+            LlmTurnResult(
+                content = "\n[$message]",
+                finishReason = "error",
+                modelId = modelId ?: defaultModel
+            )
         }
     }
 
     override suspend fun completeTurn(messages: List<ChatMessage>, tools: List<Map<String, Any>>?, modelId: String?): LlmTurnResult = withContext(Dispatchers.IO) {
-        var response: HttpURLConnection? = null
         try {
-            response = postChat(messages, tools, modelId, stream = false)
-            val body = response.inputStream.bufferedReader().use { it.readText() }
-            val json = JSONObject(body)
-            val choice = json.optJSONArray("choices")?.optJSONObject(0)
-                ?: error("LLM 返回为空：choices 缺失")
-            val message = choice.optJSONObject("message") ?: JSONObject()
-            val toolCalls = parseToolCalls(message.optJSONArray("tool_calls"))
-            LlmTurnResult(
-                content = message.optString("content", ""),
-                toolCalls = toolCalls,
-                finishReason = choice.optString("finish_reason").takeIf { it.isNotBlank() && it != "null" },
-                modelId = json.optString("model", modelId ?: defaultModel),
-                usage = json.optJSONObject("usage")?.toUsage()
-            )
+            val request = buildRequest(messages, tools, modelId, stream = false)
+            val response = client.newCall(request).execute()
+
+            response.use { resp ->
+                if (!resp.isSuccessful) {
+                    val errorBody = resp.body?.string()?.compactForLog() ?: ""
+                    Log.e(TAG, "LLM HTTP 错误: ${resp.code}, Body: $errorBody")
+                    error("LLM 请求失败：HTTP ${resp.code} $errorBody")
+                }
+
+                val body = resp.body?.string() ?: error("LLM 返回为空")
+                val json = JSONObject(body)
+                val choice = json.optJSONArray("choices")?.optJSONObject(0)
+                    ?: error("LLM 返回为空：choices 缺失")
+                val message = choice.optJSONObject("message") ?: JSONObject()
+                val toolCalls = parseToolCalls(message.optJSONArray("tool_calls"))
+                LlmTurnResult(
+                    content = message.optStringSafe("content", ""),
+                    toolCalls = toolCalls,
+                    finishReason = message.optStringSafe("finish_reason").takeIf { it.isNotBlank() },
+                    modelId = json.optStringSafe("model", modelId ?: defaultModel),
+                    usage = json.optJSONObject("usage")?.toUsage()
+                )
+            }
         } catch (e: Exception) {
+            Log.e(TAG, "completeTurn 异常", e)
             LlmTurnResult(
                 content = "[${friendlyError(e)}]",
                 finishReason = "error",
                 modelId = modelId ?: defaultModel
             )
-        } finally {
-            response?.disconnect()
         }
     }
 
@@ -107,39 +136,51 @@ class OpenAICompatibleAgentLlmClient(
 
     override fun getModelDisplayName(modelId: String): String = modelId
 
-    private fun postChat(messages: List<ChatMessage>, tools: List<Map<String, Any>>?, modelId: String?, stream: Boolean): HttpURLConnection {
+    private fun buildRequest(messages: List<ChatMessage>, tools: List<Map<String, Any>>?, modelId: String?, stream: Boolean): Request {
         val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
         require(normalizedBaseUrl.isNotBlank()) { "LLM baseUrl 不能为空" }
         require(defaultModel.isNotBlank()) { "LLM defaultModel 不能为空" }
 
-        val url = URL("$normalizedBaseUrl/chat/completions")
-        val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 30_000
-            readTimeout = 120_000
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Accept", if (stream) "text/event-stream" else "application/json")
-            apiKey.trim().takeIf { it.isNotBlank() }?.let {
-                setRequestProperty("Authorization", "Bearer $it")
-            }
-        }
+        val url = "$normalizedBaseUrl/chat/completions"
+        Log.d(TAG, "请求 URL: $url")
+
         val payload = JSONObject().apply {
             put("model", modelId?.takeIf { it.isNotBlank() } ?: defaultModel)
             put("stream", stream)
             put("messages", JSONArray(messages.map { it.toJson() }))
-            if (!tools.isNullOrEmpty()) put("tools", JSONArray(tools.map { JSONObject(it) }))
+            if (!tools.isNullOrEmpty()) {
+                put("tools", JSONArray(tools.map { tool ->
+                    JSONObject(tool).apply {
+                        val fn = optJSONObject("function")
+                        if (fn != null && fn.has("parameters")) {
+                            val params = fn.opt("parameters")
+                            if (params is String && params.isNotBlank()) {
+                                try {
+                                    fn.put("parameters", JSONObject(params))
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to parse tool parameters as JSON: $params", e)
+                                }
+                            }
+                        }
+                    }
+                }))
+            }
         }
-        OutputStreamWriter(connection.outputStream).use { it.write(payload.toString()) }
-        val code = connection.responseCode
-        if (code !in 200..299) {
-            val body = connection.errorStream?.bufferedReader()?.use { it.readText() }
-                ?: connection.inputStreamOrNull()?.bufferedReader()?.use { it.readText() }
-                ?: ""
-            connection.disconnect()
-            error("LLM 请求失败：HTTP $code ${body.compactForLog()}")
-        }
-        return connection
+
+        val payloadStr = payload.toString()
+        Log.d(TAG, "请求 Payload: $payloadStr")
+
+        return Request.Builder()
+            .url(url)
+            .post(payloadStr.toRequestBody(JSON_MEDIA_TYPE))
+            .header("Content-Type", "application/json")
+            .header("Accept", if (stream) "text/event-stream" else "application/json")
+            .apply {
+                apiKey.trim().takeIf { it.isNotBlank() }?.let {
+                    header("Authorization", "Bearer $it")
+                }
+            }
+            .build()
     }
 
     private fun parseStreamLine(line: String, toolCalls: MutableMap<Int, ToolCallBuilder>): LlmStreamChunk? {
@@ -158,10 +199,10 @@ class OpenAICompatibleAgentLlmClient(
             for (i in 0 until toolArray.length()) {
                 val item = toolArray.optJSONObject(i) ?: continue
                 val index = item.optInt("index", i)
+                val id = item.optStringSafe("id").takeIf { it.isNotBlank() }
                 val fn = item.optJSONObject("function")
-                val id = item.optString("id").takeIf { it.isNotBlank() }
-                val name = fn?.optString("name")?.takeIf { it.isNotBlank() }
-                val arguments = fn?.optString("arguments")?.takeIf { it.isNotEmpty() }
+                val name = fn?.optStringSafe("name")?.takeIf { it.isNotBlank() }
+                val arguments = fn?.optStringSafe("arguments")?.takeIf { it.isNotEmpty() }
                 val builder = toolCalls.getOrPut(index) { ToolCallBuilder() }
                 id?.let { builder.id = it }
                 name?.let { builder.name = it }
@@ -203,10 +244,24 @@ class OpenAICompatibleAgentLlmClient(
 
     private fun parseToolCalls(array: JSONArray?): List<ToolCall> {
         if (array == null) return emptyList()
-        return List(array.length()) { i ->
+        val result = mutableListOf<ToolCall>()
+        for (i in 0 until array.length()) {
             val item = array.getJSONObject(i)
             val fn = item.getJSONObject("function")
-            ToolCall(item.optString("id"), fn.optString("name"), fn.optString("arguments", "{}"))
+            val id = item.optStringSafe("id").takeIf { it.isNotBlank() } ?: "call_${System.currentTimeMillis()}_$i"
+            val name = fn.optStringSafe("name").takeIf { it.isNotBlank() } ?: continue
+            val args = fn.optStringSafe("arguments", "{}").ifBlank { "{}" }
+            result.add(ToolCall(id, name, args))
+        }
+        return result
+    }
+
+    private fun JSONObject.optStringSafe(name: String, fallback: String = ""): String {
+        val value = opt(name)
+        return if (value == null || value == JSONObject.NULL || value.toString() == "null") {
+            fallback
+        } else {
+            value.toString()
         }
     }
 
@@ -214,8 +269,6 @@ class OpenAICompatibleAgentLlmClient(
         promptTokens = optInt("prompt_tokens").takeIf { has("prompt_tokens") },
         completionTokens = optInt("completion_tokens").takeIf { has("completion_tokens") }
     )
-
-    private fun HttpURLConnection.inputStreamOrNull() = runCatching { inputStream }.getOrNull()
 
     private fun String.compactForLog(maxLength: Int = 800): String =
         lineSequence().joinToString(" ") { it.trim() }.take(maxLength)

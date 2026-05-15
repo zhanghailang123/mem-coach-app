@@ -1,17 +1,26 @@
 package cn.com.memcoach
 
+import cn.com.memcoach.agent.AgentContextCompactor
 import cn.com.memcoach.agent.AgentOrchestrator
 import cn.com.memcoach.agent.AgentSystemPrompt
 import cn.com.memcoach.agent.AgentToolRouter
+import cn.com.memcoach.agent.ModelTier
+import cn.com.memcoach.agent.StudyStateMachine
+import cn.com.memcoach.agent.llm.AgentLlmRouter
 import cn.com.memcoach.agent.llm.OpenAICompatibleAgentLlmClient
+import cn.com.memcoach.agent.memory.DailyMemoryService
+import cn.com.memcoach.agent.memory.LongTermMemoryService
+import cn.com.memcoach.agent.tool.handlers.DailyMemoryToolHandler
 import cn.com.memcoach.agent.tool.handlers.ExamToolHandler
 import cn.com.memcoach.agent.tool.handlers.KnowledgeToolHandler
+import cn.com.memcoach.agent.tool.handlers.LongTermMemoryToolHandler
 import cn.com.memcoach.agent.tool.handlers.MemoryToolHandler
 import cn.com.memcoach.agent.tool.handlers.PDFToolHandler
 import cn.com.memcoach.channel.MemCoachChannelBridge
 import cn.com.memcoach.channel.NativeEventSink
 import cn.com.memcoach.data.AppDatabase
-
+import cn.com.memcoach.pdf.PdfDocumentRepository
+import cn.com.memcoach.pipeline.PdfPipelineService
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -31,22 +40,61 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
 
         val database = AppDatabase.getInstance(applicationContext)
+        val pdfRepository = PdfDocumentRepository(applicationContext, database.pdfDocumentDao())
+        val llmConfig = defaultLlmConfig()
+        val llmClient = OpenAICompatibleAgentLlmClient(
+            baseUrl = llmConfig.baseUrl,
+            apiKey = llmConfig.apiKey,
+            defaultModel = llmConfig.defaultModel
+        )
+
+        val pipelineService = PdfPipelineService(
+            context = applicationContext,
+            questionDao = database.examQuestionDao(),
+            llmClient = llmClient
+        )
+
+        // 初始化记忆服务
+        val memoryDir = java.io.File(applicationContext.filesDir, "memory")
+        val dailyMemoryService = DailyMemoryService(
+            memoryDir = memoryDir,
+            studyRecordDao = database.studyRecordDao(),
+            userMasteryDao = database.userMasteryDao(),
+            knowledgeNodeDao = database.knowledgeNodeDao()
+        )
+        val longTermMemoryService = LongTermMemoryService(memoryDir)
+
         val toolRouter = AgentToolRouter().apply {
             register(ExamToolHandler(database.examQuestionDao(), database.studyRecordDao(), database.userMasteryDao()))
             register(KnowledgeToolHandler(database.knowledgeNodeDao(), database.knowledgeEdgeDao()))
             register(MemoryToolHandler(database.userMasteryDao(), database.knowledgeNodeDao()))
-            register(PDFToolHandler())
+            register(PDFToolHandler(pipelineService, pdfRepository, activityScope))
+            register(DailyMemoryToolHandler(dailyMemoryService))
+            register(LongTermMemoryToolHandler(longTermMemoryService))
         }
-        val llmConfig = defaultLlmConfig()
-        val orchestrator = AgentOrchestrator(
-            llmClient = OpenAICompatibleAgentLlmClient(
-                baseUrl = llmConfig.baseUrl,
-                apiKey = llmConfig.apiKey,
-                defaultModel = llmConfig.defaultModel
+
+        val contextCompactor = AgentContextCompactor(llmClient)
+        val studyStateMachine = StudyStateMachine()
+
+        // 初始化 LLM 分层路由器（当前单模型配置，后续可扩展多模型）
+        val llmRouter = AgentLlmRouter(
+            clients = mapOf(
+                ModelTier.LIGHT to llmClient,
+                ModelTier.STANDARD to llmClient,
+                ModelTier.ADVANCED to llmClient
             ),
-            toolRouter = toolRouter,
-            systemPrompt = AgentSystemPrompt()
+            defaultTier = ModelTier.STANDARD
         )
+
+        val orchestrator = AgentOrchestrator(
+            llmClient = llmClient,
+            toolRouter = toolRouter,
+            systemPrompt = AgentSystemPrompt(),
+            contextCompactor = contextCompactor,
+            stateMachine = studyStateMachine,
+            llmRouter = llmRouter
+        )
+
 
         bridge = MemCoachChannelBridge(
             orchestrator = orchestrator,
@@ -69,8 +117,19 @@ class MainActivity : FlutterActivity() {
                         eventSink?.endOfStream()
                     }
                 }
-            }
+            },
+            studyRecordDao = database.studyRecordDao(),
+            userMasteryDao = database.userMasteryDao(),
+            pdfRepository = pdfRepository,
+            examQuestionDao = database.examQuestionDao(),
+            knowledgeNodeDao = database.knowledgeNodeDao(),
+            conversationDao = database.conversationDao(),
+            chatMessageDao = database.chatMessageDao(),
+            pipelineService = pipelineService,
+            dailyMemoryService = dailyMemoryService,
+            longTermMemoryService = longTermMemoryService
         )
+
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mem_coach/native")
             .setMethodCallHandler { call, result ->
@@ -99,8 +158,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun defaultLlmConfig(): LlmConfig = LlmConfig(
-        baseUrl = "https://token-plan-cn.xiaomimimo.com/v1",
-        apiKey = "tp-cs8d8m6mm5p27npmgzedhzutk8dadawugl6lzvp7ipn1ogwv",
+        baseUrl = "https://token-plan-sgp.xiaomimimo.com/v1",
+        apiKey = "tp-sr27ssk59iklx5l0xkb0jwui70fqtzjh4y276sojdjl70o8r",
         defaultModel = "mimo-v2.5-pro"
     )
 

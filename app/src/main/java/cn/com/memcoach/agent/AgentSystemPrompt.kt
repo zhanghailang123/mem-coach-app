@@ -10,9 +10,14 @@ package cn.com.memcoach.agent
  *   Layer D: 动态上下文 —— 学情摘要、薄弱点、今日背诵清单（每次调用时替换）
  *
  * 借鉴：OpenOmniBot AgentSystemPrompt 的工具使用规范注入方式
+ *
+ * 支持两种模式：
+ * 1. 传统模式：使用硬编码的 MemCoachPersona
+ * 2. 场景化模式：使用 ModelSceneRegistry 从外部配置加载
  */
 class AgentSystemPrompt(
-    private val persona: MemCoachPersona = MemCoachPersona.default()
+    private val persona: MemCoachPersona = MemCoachPersona.default(),
+    private val sceneRegistry: ModelSceneRegistry? = null
 ) {
 
     companion object {
@@ -21,6 +26,9 @@ class AgentSystemPrompt(
 
         /** 工具规范占位符，运行时由 AgentToolRouter 注入 */
         private const val TOOLS_PLACEHOLDER = "{{TOOLS}}"
+
+        /** 场景 ID：Agent 系统提示词 */
+        const val SCENE_AGENT_SYSTEM = "scene.agent.system"
     }
 
     /**
@@ -37,7 +45,20 @@ class AgentSystemPrompt(
         val sb = StringBuilder()
 
         // ─── Layer A: 静态人设 ───
-        sb.appendLine(persona.toPrompt())
+        val personaPrompt = if (sceneRegistry != null && sceneRegistry.hasScene(SCENE_AGENT_SYSTEM)) {
+            // 从场景配置获取人设
+            sceneRegistry.getRenderedPrompt(
+                SCENE_AGENT_SYSTEM,
+                mapOf(
+                    "NAME" to persona.name,
+                    "DESCRIPTION" to persona.description
+                )
+            )
+        } else {
+            // 使用传统的人设
+            persona.toPrompt()
+        }
+        sb.appendLine(personaPrompt)
         sb.appendLine()
 
         // ─── Layer B: 工作模式 ───
@@ -253,8 +274,9 @@ data class MemCoachPersona(
 - 遇到连续错误时，提供"换个思路"的选项而非持续施压。
 
 ### 5. 专业边界
-- 你只负责 MEM 逻辑和写作两科。
-- 遇到数学或英语问题，礼貌说明不在你的范围内，建议查阅教材。
+- 你的教学辅导（讲解、答疑、批改）仅限于 MEM 逻辑和写作两科。
+- 对于数学和英语等其他科目，你仍需协助用户完成基础管理任务：包括真题的【上传导入】、【解析进度查询】和【题目检索】。
+- 如果用户要求讲解数学或英语的具体题目，请在展示完题目内容后，礼貌说明这超出了你的辅导范围，并建议参考官方教材。
 - 不提供考试代报名、政策咨询等非学习类服务。
 - AI 生成的内容仅供参考，最终以官方教材为准。
 """.trimIndent()

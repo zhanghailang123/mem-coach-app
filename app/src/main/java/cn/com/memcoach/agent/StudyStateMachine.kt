@@ -97,20 +97,25 @@ class StudyStateMachine {
     }
 
     /** 获取当前状态允许的工具集合 */
-    fun getAllowedTools(): Set<String> = when (currentState) {
-        State.IDLE -> setOf("exam_question_search", "knowledge_search", "knowledge_node_detail", "memorize_query")
-        State.BROWSE -> setOf("exam_question_search", "exam_question_explain", "knowledge_search", "knowledge_node_detail", "knowledge_graph_expand")
-        State.PRACTICE -> setOf("exam_question_search", "exam_question_explain", "exam_answer_check", "exam_mastery_update", "exam_similar_find")
-        State.EXPLAIN -> setOf("exam_question_explain", "exam_answer_check", "exam_similar_find", "knowledge_search", "knowledge_node_detail", "knowledge_graph_expand")
-        State.EXTEND -> setOf("exam_similar_find", "exam_question_search", "knowledge_graph_expand", "knowledge_search", "exam_mock_generate")
-        State.REVIEW -> setOf("exam_question_search", "exam_question_explain", "exam_answer_check", "exam_mastery_update", "exam_similar_find", "memorize_query", "memorize_record")
-        State.MOCK -> setOf("exam_mock_generate", "exam_question_search", "exam_answer_check")
+    fun getAllowedTools(): Set<String> {
+        val pdfTools = setOf("pdf_upload", "pdf_list", "pdf_parse_status", "pdf_ocr_recognize", "pdf_query")
+        val stateTools = when (currentState) {
+            State.IDLE -> setOf("exam_question_search", "knowledge_search", "knowledge_node_detail", "memorize_query")
+            State.BROWSE -> setOf("exam_question_search", "exam_question_explain", "knowledge_search", "knowledge_node_detail", "knowledge_graph_expand")
+            State.PRACTICE -> setOf("exam_question_search", "exam_question_explain", "exam_answer_check", "exam_mastery_update", "exam_similar_find")
+            State.EXPLAIN -> setOf("exam_question_explain", "exam_answer_check", "exam_similar_find", "knowledge_search", "knowledge_node_detail", "knowledge_graph_expand")
+            State.EXTEND -> setOf("exam_similar_find", "exam_question_search", "knowledge_graph_expand", "knowledge_search", "exam_mock_generate")
+            State.REVIEW -> setOf("exam_question_search", "exam_question_explain", "exam_answer_check", "exam_mastery_update", "exam_similar_find", "memorize_query", "memorize_record")
+            State.MOCK -> setOf("exam_mock_generate", "exam_question_search", "exam_answer_check")
+        }
+        return stateTools + pdfTools
     }
 
     /** 根据用户意图推断合适的状态 */
     fun inferState(userMessage: String): State {
         val lower = userMessage.lowercase().trim()
         return when {
+            lower.contains("pdf") || lower.contains("document_id") || lower.contains("文档") -> State.BROWSE
             lower.contains("做") && (lower.contains("题") || lower.contains("练习") || lower.contains("练") || lower.contains("刷")) -> State.PRACTICE
             lower.contains("讲解") || lower.contains("解释") || lower.contains("为什么") || lower.contains("怎么") -> State.EXPLAIN
             lower.contains("延伸") || lower.contains("相似") || lower.contains("关联") || lower.contains("变式") -> State.EXTEND

@@ -52,79 +52,144 @@ class ExamToolHandler(
         ToolDefinition(
             name = "exam_question_search",
             description = "搜索真题库，支持按年份、科目、知识点、题型过滤。返回符合条件的题目列表（不含答案和解析）。",
-            parameters = buildJsonSchema {
-                put("type", "object")
-                put("properties", buildJsonObject {
-                    put("subject", buildJsonObject { put("type", "string"); put("description", "科目：logic/writing/math/english"); put("enum", buildJsonArray { add("logic"); add("writing"); add("math"); add("english") }) })
-                    put("topic", buildJsonObject { put("type", "string"); put("description", "知识点ID，如 conditional_inference") })
-                    put("year", buildJsonObject { put("type", "integer"); put("description", "年份，如 2023") })
-                    put("type", buildJsonObject { put("type", "string"); put("description", "题型：choice/fill/essay") })
-                    put("limit", buildJsonObject { put("type", "integer"); put("default", 5); put("description", "返回数量上限") })
-                })
-                put("required", buildJsonArray { add("subject") })
-            }.toString()
+            parameters = """
+{
+  "type": "object",
+  "properties": {
+    "subject": {
+      "type": "string",
+      "description": "科目：logic/writing/math/english",
+      "enum": ["logic", "writing", "math", "english"]
+    },
+    "topic": {
+      "type": "string",
+      "description": "知识点ID，如 conditional_inference"
+    },
+    "year": {
+      "type": "integer",
+      "description": "年份，如 2023"
+    },
+    "type": {
+      "type": "string",
+      "description": "题型：choice/fill/essay"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "返回数量上限"
+    }
+  },
+  "required": ["subject"]
+}
+""".trimIndent()
         ),
         ToolDefinition(
             name = "exam_question_explain",
             description = "获取指定题目的完整信息：题干、选项、正确答案、解析、来源（年份/真题编号）。用于讲解时引用。",
-            parameters = buildJsonSchema {
-                put("type", "object")
-                put("properties", buildJsonObject {
-                    put("question_id", buildJsonObject { put("type", "string"); put("description", "题目ID，如 logic_2023_1") })
-                    put("depth", buildJsonObject { put("type", "string"); put("description", "解析深度：brief/standard/detailed"); put("default", "standard") })
-                })
-                put("required", buildJsonArray { add("question_id") })
-            }.toString()
+            parameters = """
+{
+  "type": "object",
+  "properties": {
+    "question_id": {
+      "type": "string",
+      "description": "题目ID，如 logic_2023_1"
+    },
+    "depth": {
+      "type": "string",
+      "description": "解析深度：brief/standard/detailed"
+    }
+  },
+  "required": ["question_id"]
+}
+""".trimIndent()
         ),
         ToolDefinition(
             name = "exam_answer_check",
             description = "比对用户答案与正确答案，返回是否正确及解析。用于做题后即时反馈。",
-            parameters = buildJsonSchema {
-                put("type", "object")
-                put("properties", buildJsonObject {
-                    put("question_id", buildJsonObject { put("type", "string"); put("description", "题目ID") })
-                    put("user_answer", buildJsonObject { put("type", "string"); put("description", "用户提交的答案") })
-                })
-                put("required", buildJsonArray { add("question_id"); add("user_answer") })
-            }.toString()
+            parameters = """
+{
+  "type": "object",
+  "properties": {
+    "question_id": {
+      "type": "string",
+      "description": "题目ID"
+    },
+    "user_answer": {
+      "type": "string",
+      "description": "用户提交的答案"
+    }
+  },
+  "required": ["question_id", "user_answer"]
+}
+""".trimIndent()
         ),
         ToolDefinition(
             name = "exam_similar_find",
             description = "查找与指定题目知识点相似的真题，用于变式练习和延伸学习。基于 topic 字段精确匹配后随机抽取。",
-            parameters = buildJsonSchema {
-                put("type", "object")
-                put("properties", buildJsonObject {
-                    put("question_id", buildJsonObject { put("type", "string"); put("description", "参考题目ID") })
-                    put("limit", buildJsonObject { put("type", "integer"); put("default", 3); put("description", "返回数量") })
-                })
-                put("required", buildJsonArray { add("question_id") })
-            }.toString()
+            parameters = """
+{
+  "type": "object",
+  "properties": {
+    "question_id": {
+      "type": "string",
+      "description": "参考题目ID"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "返回数量"
+    }
+  },
+  "required": ["question_id"]
+}
+""".trimIndent()
         ),
         ToolDefinition(
             name = "exam_mastery_update",
             description = "更新用户对某道题关联知识点的掌握度。Agent 在用户完成练习后调用此工具记录学习效果。",
-            parameters = buildJsonSchema {
-                put("type", "object")
-                put("properties", buildJsonObject {
-                    put("question_id", buildJsonObject { put("type", "string"); put("description", "题目ID") })
-                    put("correct", buildJsonObject { put("type", "boolean"); put("description", "是否正确") })
-                    put("time_spent_sec", buildJsonObject { put("type", "integer"); put("description", "用时（秒）") })
-                })
-                put("required", buildJsonArray { add("question_id"); add("correct") })
-            }.toString()
+            parameters = """
+{
+  "type": "object",
+  "properties": {
+    "question_id": {
+      "type": "string",
+      "description": "题目ID"
+    },
+    "correct": {
+      "type": "boolean",
+      "description": "是否正确"
+    },
+    "time_spent_sec": {
+      "type": "integer",
+      "description": "用时（秒）"
+    }
+  },
+  "required": ["question_id", "correct"]
+}
+""".trimIndent()
         ),
         ToolDefinition(
             name = "exam_mock_generate",
             description = "从题库中按约束抽取题目组成模拟卷。用于用户要求'来一套模拟题'或'随机组卷'时。",
-            parameters = buildJsonSchema {
-                put("type", "object")
-                put("properties", buildJsonObject {
-                    put("subject", buildJsonObject { put("type", "string"); put("description", "科目"); put("enum", buildJsonArray { add("logic"); add("writing") }) })
-                    put("question_count", buildJsonObject { put("type", "integer"); put("default", 10); put("description", "题目数量") })
-                    put("strategy", buildJsonObject { put("type", "string"); put("description", "抽取策略：random（随机）/ weak_focus（重点薄弱点）/ balanced（均匀分布）"); put("default", "balanced") })
-                })
-                put("required", buildJsonArray { add("subject") })
-            }.toString()
+            parameters = """
+{
+  "type": "object",
+  "properties": {
+    "subject": {
+      "type": "string",
+      "description": "科目",
+      "enum": ["logic", "writing"]
+    },
+    "question_count": {
+      "type": "integer",
+      "description": "题目数量"
+    },
+    "strategy": {
+      "type": "string",
+      "description": "抽取策略：random（随机）/ weak_focus（重点薄弱点）/ balanced（均匀分布）"
+    }
+  },
+  "required": ["subject"]
+}
+""".trimIndent()
         )
     )
 

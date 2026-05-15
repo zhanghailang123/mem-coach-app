@@ -2,40 +2,37 @@ package cn.com.memcoach.agent.tool.handlers
 
 import cn.com.memcoach.agent.tool.ToolDefinition
 import cn.com.memcoach.agent.tool.ToolHandler
+import cn.com.memcoach.pdf.PdfDocumentRepository
+import cn.com.memcoach.pdf.toMap
+import cn.com.memcoach.pipeline.PdfPipelineService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.io.File
 
 /**
  * PDF 处理工具处理器 —— 提供 PDF 上传、OCR 识别状态查询、结构化解析等工具。
  *
  * 覆盖工具：
  * - pdf_upload            —— 接收 PDF 文件路径，启动 OCR+结构化解析 Pipeline
- * - pdf_parse_status      —— 查询 PDF 解析进度和结果
+ * - pdf_parse_status      —— 查询 PDF 解析进度 and 结果
  * - pdf_ocr_recognize     —— 对单页图片进行 OCR 识别（调试用）
  *
- * 注意：真实 OCR 能力需要在 Task #6（implement-pdf-pipeline）中实现。
- * 本 Handler 目前提供工具定义和桩实现，后续替换为完整的 ML Kit OCR + LLM 结构化流水线。
+ * 借鉴：OpenOmniBot 的 PDF 处理逻辑。
  */
-class PDFToolHandler : ToolHandler {
-
-    // 内存中的解析状态（MVP 阶段用内存存储，后续迁移到数据库）
-    private data class ParseJob(
-        val filePath: String,
-        var status: String,         // pending / ocr / structuring / done / error
-        var progress: Int = 0,      // 0-100
-        var totalPages: Int = 0,
-        var parsedPages: Int = 0,
-        var questions: String? = null,  // JSON 格式的解析结果
-        var error: String? = null,
-        val createdAt: Long = System.currentTimeMillis()
-    )
-
-    private val jobs = mutableMapOf<String, ParseJob>()
-    private var jobIdCounter = 0L
+class PDFToolHandler(
+    private val pipelineService: PdfPipelineService,
+    private val pdfRepository: PdfDocumentRepository,
+    private val scope: CoroutineScope
+) : ToolHandler {
 
     override val toolNames = setOf(
         "pdf_upload",
+        "pdf_list",
         "pdf_parse_status",
-        "pdf_ocr_recognize"
+        "pdf_ocr_recognize",
+        "pdf_query"
     )
 
     override suspend fun execute(toolName: String, arguments: String): String {
@@ -43,10 +40,13 @@ class PDFToolHandler : ToolHandler {
             val args = JSONObject(arguments)
             when (toolName) {
                 "pdf_upload" -> uploadPdf(args)
+                "pdf_list" -> listPdfs()
                 "pdf_parse_status" -> getParseStatus(args)
                 "pdf_ocr_recognize" -> ocrRecognize(args)
+                "pdf_query" -> queryPdf(args)
                 else -> errorJson("unknown tool: $toolName")
             }
+
         } catch (e: Exception) {
             errorJson("execute error: ${e.message?.replace("\"", "'")}")
         }
@@ -79,6 +79,16 @@ class PDFToolHandler : ToolHandler {
 """.trimIndent()
         ),
         ToolDefinition(
+            name = "pdf_list",
+            description = "列出已导入 App 私有目录的 PDF 文件。返回文件 ID、文件名、本地路径、页数、大小、科目和年份。对话中引用 PDF 时优先使用文件 ID，不要把整份 PDF 直接塞进上下文。",
+            parameters = """
+{
+  "type": "object",
+  "properties": {}
+}
+""".trimIndent()
+        ),
+        ToolDefinition(
             name = "pdf_parse_status",
             description = "查询 PDF 解析任务的状态和进度。返回当前阶段（OCR/结构化/完成）、进度百分比、已解析题目列表。",
             parameters = """
@@ -96,7 +106,7 @@ class PDFToolHandler : ToolHandler {
         ),
         ToolDefinition(
             name = "pdf_ocr_recognize",
-            description = "对 PDF 的指定页面进行 OCR 文字识别（调试和预览用）。返回该页的识别文本。",
+            description = "对 PDF 的指定页面进行 OCR 文字识别（调试和预览用）。返回该页的识别文本。可传 file_path 或 document_id。",
             parameters = """
 {
   "type": "object",
@@ -105,30 +115,52 @@ class PDFToolHandler : ToolHandler {
       "type": "string",
       "description": "PDF 文件路径"
     },
+    "document_id": {
+      "type": "string",
+      "description": "已导入 PDF 的文档 ID"
+    },
     "page_number": {
       "type": "integer",
       "description": "页码（从 1 开始）"
     }
   },
-  "required": ["file_path", "page_number"]
+  "required": ["page_number"]
+}
+""".trimIndent()
+        ),
+        ToolDefinition(
+            name = "pdf_query",
+            description = "根据 document_id 查询已导入 PDF 的文本预览，用于回答用户基于 PDF 的问题。优先在用户消息包含 document_id 时调用。",
+            parameters = """
+{
+  "type": "object",
+  "properties": {
+    "document_id": {
+      "type": "string",
+      "description": "已导入 PDF 的文档 ID，例如 pdf_xxx"
+    },
+    "question": {
+      "type": "string",
+      "description": "用户围绕该 PDF 提出的问题"
+    },
+    "max_pages": {
+      "type": "integer",
+      "description": "最多读取前几页，默认 3，建议 1-5"
+    }
+  },
+  "required": ["document_id", "question"]
 }
 """.trimIndent()
         )
     )
 
-    // ─── 工具实现（桩实现，后续替换为完整 Pipeline）───
+
+    // ─── 工具实现 ───
 
     /**
      * 上传 PDF 并启动解析任务
-     *
-     * 真实实现将：
-     * 1. 复制 PDF 到应用私有目录
-     * 2. 尝试 pdftotext 提取文本
-     * 3. 如果提取为空 → 用 PdfRenderer 逐页渲染 + ML Kit OCR
-     * 4. 拼接 OCR 文本 → 调用 LLM 结构化解析
-     * 5. 去重 → 写入 SQLite
      */
-    private fun uploadPdf(args: JSONObject): String {
+    private suspend fun uploadPdf(args: JSONObject): String {
         val filePath = args.optString("file_path", "")
         if (filePath.isBlank()) return errorJson("file_path 必填")
         val subject = args.optString("subject", "")
@@ -136,27 +168,42 @@ class PDFToolHandler : ToolHandler {
         val year = args.optInt("year", -1)
         if (year <= 0) return errorJson("year 必填且必须大于 0")
 
-        jobIdCounter++
-        val jobId = "pdf_job_$jobIdCounter"
-        val job = ParseJob(
-            filePath = filePath,
-            status = "pending",
-            totalPages = 0
-        )
-        jobs[jobId] = job
+        val document = pdfRepository.importPdf(filePath, subject, year)
+        val file = File(document.localPath)
+        if (!file.exists()) return errorJson("文件归档失败: ${document.localPath}")
 
-        // 桩实现：直接返回 jobId，后台任务未启用
-        // 后续在 Task #6 中实现真正的后台 Pipeline
-        job.status = "pending"
-        job.progress = 0
+        val jobId = "pdf_job_${System.currentTimeMillis()}"
+
+        // 使用前台服务启动解析，防止被系统杀掉
+        cn.com.memcoach.pipeline.PdfParsingForegroundService.start(
+            context = cn.com.memcoach.MemCoachApplication.instance,
+            filePath = document.localPath,
+            subject = subject,
+            year = year,
+            jobId = jobId
+        )
 
         val json = JSONObject()
         json.put("job_id", jobId)
         json.put("status", "pending")
-        json.put("file_path", filePath)
+        json.put("document_id", document.id)
+        json.put("file_name", document.fileName)
+        json.put("file_path", document.localPath)
+        json.put("page_count", document.pageCount)
         json.put("subject", subject)
         json.put("year", year)
-        json.put("message", "PDF 已接收，解析 Pipeline 尚未启用（Task #6 待实现）。当前为桩实现，返回模拟状态。")
+        json.put("message", "PDF 已导入私有目录并启动后台解析。后续对话请优先引用 document_id，不要直接传整份 PDF。")
+        return json.toString()
+    }
+
+    private suspend fun listPdfs(): String {
+        val array = org.json.JSONArray()
+        pdfRepository.listDocuments().forEach { document ->
+            array.put(JSONObject(document.toMap()))
+        }
+        val json = JSONObject()
+        json.put("documents", array)
+        json.put("count", array.length())
         return json.toString()
     }
 
@@ -167,50 +214,62 @@ class PDFToolHandler : ToolHandler {
         val jobId = args.optString("job_id", "")
         if (jobId.isBlank()) return errorJson("job_id 必填")
 
-        val job = jobs[jobId] ?: return errorJson("任务不存在: $jobId")
+        val statusJson = pipelineService.getJobStatus(jobId)
+            ?: return errorJson("任务不存在或已过期: $jobId")
 
-        val json = JSONObject()
-        json.put("job_id", jobId)
-        json.put("status", job.status)
-        json.put("progress", job.progress)
-        json.put("total_pages", job.totalPages)
-        json.put("parsed_pages", job.parsedPages)
-
-        job.questions?.let { questions ->
-            json.put("questions", JSONObject(questions))
-        }
-        job.error?.let { error ->
-            json.put("error", error)
-        }
-
-        // 提示：当前为桩实现
-        json.put("_note", "PDF 解析 Pipeline 尚未实现（Task #6）。当前返回模拟状态。")
-        return json.toString()
+        return statusJson.toString()
     }
 
     /**
      * 单页 OCR 识别（桩实现）
-     *
-     * 真实实现将：
-     * 1. 用 PdfRenderer 渲染指定页为 Bitmap
-     * 2. 调用 ML Kit text-recognition-chinese 识别中文
-     * 3. 返回识别文本
      */
-    private fun ocrRecognize(args: JSONObject): String {
-        val filePath = args.optString("file_path", "")
-        if (filePath.isBlank()) return errorJson("file_path 必填")
+    private suspend fun ocrRecognize(args: JSONObject): String {
+        val documentId = args.optString("document_id", "")
+        val filePathArg = args.optString("file_path", "")
+        val filePath = when {
+            filePathArg.isNotBlank() -> filePathArg
+            documentId.isNotBlank() -> pdfRepository.getDocument(documentId)?.localPath.orEmpty()
+            else -> ""
+        }
+        if (filePath.isBlank()) return errorJson("file_path 或 document_id 必填")
         val pageNumber = args.optInt("page_number", -1)
         if (pageNumber <= 0) return errorJson("page_number 必填且必须大于 0")
 
         val json = JSONObject()
+        json.put("document_id", documentId.takeIf { it.isNotBlank() })
         json.put("file_path", filePath)
         json.put("page_number", pageNumber)
         json.put("text", "")
-        json.put("_note", "OCR 识别未启用（Task #6 待实现）。后续将使用 ML Kit text-recognition-chinese 进行中文识别。")
+        json.put("_note", "单页 OCR 识别接口暂未通过 Handler 直接暴露，请优先使用 pdf_query 获取文本预览，或使用 pdf_upload 启动完整 Pipeline。")
+        return json.toString()
+    }
+
+    private suspend fun queryPdf(args: JSONObject): String {
+        val documentId = args.optString("document_id", "")
+        if (documentId.isBlank()) return errorJson("document_id 必填")
+        val question = args.optString("question", "")
+        if (question.isBlank()) return errorJson("question 必填")
+        val maxPages = args.optInt("max_pages", 3).coerceIn(1, 5)
+
+        val document = pdfRepository.getDocument(documentId)
+            ?: return errorJson("未找到 PDF 文档: $documentId")
+        val file = File(document.localPath)
+        if (!file.exists()) return errorJson("PDF 文件不存在: ${document.localPath}")
+
+        val text = pipelineService.extractTextPreview(file, maxPages)
+        val json = JSONObject()
+        json.put("document_id", document.id)
+        json.put("file_name", document.fileName)
+        json.put("page_count", document.pageCount)
+        json.put("question", question)
+        json.put("max_pages", maxPages)
+        json.put("text", text)
+        json.put("message", if (text.isBlank()) "未提取到 PDF 文本，请确认文档可读或等待解析完成。" else "已返回 PDF 文本预览，请基于 text 回答用户问题；如果依据不足，请明确说明。")
         return json.toString()
     }
 
     private fun errorJson(msg: String): String {
+
         val escaped = msg.replace("\\", "\\\\").replace("\"", "\\\"")
         return """{"error":"$escaped"}"""
     }

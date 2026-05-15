@@ -12,6 +12,20 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_riverpod: ^2.5.1
   go_router: ^14.2.0
+  flutter_markdown: ^0.7.4+3
+  flutter_math_fork: ^0.7.2
+  file_picker: ^8.1.0
+
+# 避开 flutter_plugin_android_lifecycle 2.0.34 的 build.gradle.kts 兼容问题
+# 2.0.34 将构建脚本迁移到 Kotlin DSL，在当前 Flutter Module 集成方式下会出现 compileSdkVersion 解析失败。
+dependency_overrides:
+  flutter_plugin_android_lifecycle: 2.0.33
 
 flutter:
   uses-material-design: true
+  module:
+    androidX: true
+    androidPackage: cn.com.memcoach.ui
+    iosBundleIdentifier: cn.com.memcoach.ui
+
+
