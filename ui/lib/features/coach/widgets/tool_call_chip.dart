@@ -19,42 +19,92 @@ class ToolCallChip extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF3A3A3C),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.description_outlined,
-                  size: 16,
-                  color: const Color(0xFF34C759),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  _formatToolName(toolName),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
+          GestureDetector(
+            onTap: () => _showToolDetails(context),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3A3A3C),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.description_outlined,
+                    size: 16,
+                    color: const Color(0xFF34C759),
                   ),
-                ),
-                if (duration != null || isRunning) ...[
                   const SizedBox(width: 8),
                   Text(
-                    isRunning ? '...' : '${(duration!.inMilliseconds / 1000).toStringAsFixed(1)}s',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
-                      fontSize: 12,
+                    _formatToolName(toolName),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
                     ),
                   ),
+                  if (duration != null || isRunning) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      isRunning ? '...' : '${(duration!.inMilliseconds / 1000).toStringAsFixed(1)}s',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showToolDetails(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.description_outlined, color: Color(0xFF34C759)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _formatToolName(toolName),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: Icon(Icons.close),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (duration != null)
+              Text(
+                '耗时：${(duration!.inMilliseconds / 1000).toStringAsFixed(2)}s',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+              ),
+            if (isRunning)
+              Text(
+                '执行中...',
+                style: TextStyle(color: Colors.blue, fontSize: 14),
+              ),
+          ],
+        ),
       ),
     );
   }
