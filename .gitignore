@@ -14,6 +14,7 @@ captures/
 *.dex
 
 # Kotlin / Java
+.kotlin/
 *.class
 *.jar
 *.war
@@ -21,6 +22,7 @@ captures/
 *.nar
 hs_err_pid*
 replay_pid*
+
 
 # Android Studio / IntelliJ
 .idea/
