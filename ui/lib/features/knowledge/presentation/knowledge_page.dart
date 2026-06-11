@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import 'dart:convert';
+
 import '../../../core/native/mem_coach_native_bridge.dart';
 import '../../coach/presentation/practice_page.dart';
+
 
 class KnowledgePage extends StatefulWidget {
   const KnowledgePage({super.key, this.initialTab = 0});
@@ -34,7 +37,7 @@ class _KnowledgePageState extends State<KnowledgePage> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 100),
         children: [
           _SegmentTabs(
             selected: _selectedTab,
@@ -133,8 +136,15 @@ class _FileGroupSectionState extends State<_FileGroupSection> {
 
     if (confirmed == true) {
       try {
-        await MemCoachNativeBridge.deletePdf(id);
+        final result = await MemCoachNativeBridge.deletePdf(id);
         _loadFiles(); // 重新加载列表
+        if (mounted) {
+          final deletedCount = result['deleted_question_count'] ?? 0;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('已删除文件，并清理 $deletedCount 道关联真题')),
+          );
+        }
+
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -178,23 +188,202 @@ class _FileGroupSectionState extends State<_FileGroupSection> {
                         onPressed: () => _deleteFile(id, name),
                       ),
                       onTap: () {
-                        // 跳转到练习页面，练习该文件的题目
-                        PracticePage.navigate(
-                          context,
-                          title: name,
-                          subject: subject ?? 'logic',
-                          count: 5,
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => PdfQuestionManagementPage(
+                              documentId: id,
+                              title: name,
+                            ),
+                          ),
                         );
                       },
                     );
+
                   }).toList(),
                 ),
     );
   }
 }
 
+class PdfQuestionManagementPage extends StatefulWidget {
+  const PdfQuestionManagementPage({
+    super.key,
+    required this.documentId,
+    required this.title,
+  });
+
+  final String documentId;
+  final String title;
+
+  @override
+  State<PdfQuestionManagementPage> createState() => _PdfQuestionManagementPageState();
+}
+
+class _PdfQuestionManagementPageState extends State<PdfQuestionManagementPage> {
+  List<Map<String, dynamic>> _questions = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadQuestions();
+  }
+
+  Future<void> _loadQuestions() async {
+    setState(() => _loading = true);
+    try {
+      final questions = await MemCoachNativeBridge.listPdfQuestions(widget.documentId);
+      if (mounted) {
+        setState(() {
+          _questions = questions;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载真题失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteQuestions() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除关联真题'),
+        content: Text('确定删除 "${widget.title}" 已解析出的全部真题吗？PDF 文件本身会保留。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除真题', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    try {
+      final result = await MemCoachNativeBridge.deletePdfQuestions(widget.documentId);
+      await _loadQuestions();
+      if (mounted) {
+        final deletedCount = result['deleted_question_count'] ?? 0;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已删除 $deletedCount 道真题')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('删除真题失败: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+        actions: [
+          IconButton(
+            onPressed: _questions.isEmpty ? null : _deleteQuestions,
+            icon: const Icon(Icons.delete_sweep_outlined),
+            tooltip: '删除关联真题',
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _questions.isEmpty
+              ? const Center(child: Text('暂无从该 PDF 解析出的真题'))
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _questions.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final question = _questions[index];
+                    final number = question['question_number']?.toString();
+                    final stem = question['stem']?.toString() ?? '';
+                    final page = question['source_page']?.toString() ?? '-';
+                    final status = question['parse_status']?.toString() ?? '';
+                    final confidence = question['parse_confidence'];
+                    return _KbCard(
+                      title: number == null || number == 'null' ? '第 ${index + 1} 题' : '第 $number 题',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(stem, style: const TextStyle(fontWeight: FontWeight.w700, height: 1.5)),
+                          const SizedBox(height: 10),
+                          ..._buildOptionTexts(question['options']?.toString()).map(
+                            (option) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(option),
+                            ),
+                          ),
+                          const Divider(height: 24),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 6,
+                            children: [
+                              _MetaChip(label: '页码 $page'),
+                              if (status.isNotEmpty) _MetaChip(label: status),
+                              if (confidence != null) _MetaChip(label: '置信度 $confidence'),
+                            ],
+                          ),
+                          if ((question['answer']?.toString() ?? '').isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Text('答案：${question['answer']}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                          ],
+                          if ((question['explanation']?.toString() ?? '').isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text('解析：${question['explanation']}', style: const TextStyle(color: Colors.black87, height: 1.5)),
+                          ],
+                        ],
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+
+  List<String> _buildOptionTexts(String? rawOptions) {
+    if (rawOptions == null || rawOptions.isEmpty || rawOptions == '{}') return const [];
+    try {
+      final decoded = jsonDecode(rawOptions);
+      if (decoded is Map) {
+        return decoded.entries.map((entry) => '${entry.key}. ${entry.value}').toList();
+      }
+    } catch (_) {}
+    return [rawOptions];
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+    );
+  }
+}
+
 /// 知识图谱区域
 class _KnowledgeTreeSection extends StatefulWidget {
+
   const _KnowledgeTreeSection();
 
   @override

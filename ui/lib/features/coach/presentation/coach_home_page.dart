@@ -6,6 +6,7 @@ import '../widgets/chat_sheet.dart';
 import '../widgets/coach_shell_card.dart';
 import '../widgets/quick_action_grid.dart';
 import '../widgets/study_mission_card.dart';
+import 'practice_page.dart';
 
 /// 首页数据模型
 class HomeData {
@@ -117,6 +118,12 @@ class _CoachHomePageState extends State<CoachHomePage> {
                       child: _ChatHeroCard(data: data, isLoading: isLoading),
                     ),
                   ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                      child: _CoreStudyDoubleCard(data: data),
+                    ),
+                  ),
                   const SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
@@ -132,19 +139,12 @@ class _CoachHomePageState extends State<CoachHomePage> {
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-                      child: _KnowledgeOverviewCard(data: data),
+                      child: _LearningInsightPanel(data: data),
                     ),
                   ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-                      child: _InsightStrip(data: data),
-                    ),
-                  ),
-
                   const SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.fromLTRB(20, 28, 20, 40),
+                      padding: EdgeInsets.fromLTRB(20, 28, 20, 100),
                       child: QuickActionGrid(),
                     ),
                   ),
@@ -195,7 +195,6 @@ class _Header extends StatelessWidget {
             ],
           ),
         ),
-
         IconButton.filledTonal(
           onPressed: () {
             showDialog(
@@ -385,7 +384,6 @@ class _PromptChip extends StatelessWidget {
       labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.black87),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
     );
-
   }
 }
 
@@ -401,18 +399,134 @@ class _ContextSectionTitle extends StatelessWidget {
           height: 24,
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.primary,
-            borderRadius: BorderRadius.circular(999),
+      class _CoreStudyDoubleCard extends StatelessWidget {
+  const _CoreStudyDoubleCard({required this.data});
+
+  final HomeData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        // 真题挑战
+        Expanded(
+          child: GestureDetector(
+            onTap: () {
+              PracticePage.navigate(
+                context,
+                title: '每日真题挑战',
+                subject: 'logic',
+                count: 5,
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF5B5FEF), Color(0xFF8C90FF)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF5B5FEF).withOpacity(0.25),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.edit_document, color: Colors.white, size: 20),
+                      ),
+                      const Icon(Icons.arrow_forward_rounded, color: Colors.white70, size: 18),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    '真题演练',
+                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    data.todayTotal > 0 ? '今日已练 ${data.todayTotal} 题' : '开启今日刷题挑战',
+                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
-        const SizedBox(width: 10),
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('AI 已结合这些学习上下文', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-              SizedBox(height: 2),
-              Text('任务、知识图谱和练习数据会进入你的对话决策。', style: TextStyle(fontSize: 12.5, color: Colors.black54)),
-            ],
+        const SizedBox(width: 14),
+        // 记忆卡牌
+        Expanded(
+          child: GestureDetector(
+            onTap: () {
+              PracticePage.navigate(
+                context,
+                title: '背诵复习',
+                subject: 'logic',
+                count: 5,
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFEF476F), Color(0xFFFF7597)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFEF476F).withOpacity(0.25),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.psychology, color: Colors.white, size: 20),
+                      ),
+                      const Icon(Icons.arrow_forward_rounded, color: Colors.white70, size: 18),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    '记忆闪卡',
+                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    data.dueReviewCount > 0 ? '${data.dueReviewCount} 个知识点到期' : '今日已背诵完成',
+                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ],
@@ -420,9 +534,8 @@ class _ContextSectionTitle extends StatelessWidget {
   }
 }
 
-class _KnowledgeOverviewCard extends StatelessWidget {
-
-  const _KnowledgeOverviewCard({required this.data});
+class _LearningInsightPanel extends StatelessWidget {
+  const _LearningInsightPanel({required this.data});
 
   final HomeData data;
 
@@ -437,6 +550,22 @@ class _KnowledgeOverviewCard extends StatelessWidget {
         .take(3)
         .toList();
 
+    // 预估分
+    final estimatedScore = data.overallAccuracy >= 0
+        ? (130 + data.overallAccuracy * 40 + (data.todayTotal > 0 ? 6 : 0)).toInt()
+        : '--';
+
+    // 正确率
+    final accuracyText = data.todayAccuracy >= 0
+        ? '${(data.todayAccuracy * 100).toInt()}%'
+        : data.overallAccuracy >= 0
+            ? '${(data.overallAccuracy * 100).toInt()}%'
+            : '--';
+
+    final accuracyDelta = data.todayAccuracy >= 0 && data.overallAccuracy >= 0
+        ? '${((data.todayAccuracy - data.overallAccuracy) * 100).toInt()}%'
+        : '今日';
+
     return CoachShellCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -446,39 +575,119 @@ class _KnowledgeOverviewCard extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
-                decoration: BoxDecoration(color: const Color(0xFF5B5FEF).withOpacity(0.10), borderRadius: BorderRadius.circular(15)),
-                child: const Icon(Icons.account_tree_rounded, color: Color(0xFF5B5FEF)),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF20B486).withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(Icons.analytics_rounded, color: Color(0xFF20B486)),
               ),
               const SizedBox(width: 12),
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('知识体系', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                    Text('学情透视', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
                     SizedBox(height: 2),
-                    Text('由对话、真题和复习记录持续生成', style: TextStyle(fontSize: 12.5, color: Colors.black54)),
+                    Text('分析你已掌握的知识图谱与指标趋势', style: TextStyle(fontSize: 12.5, color: Colors.black54)),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: progress.clamp(0.0, 1.0),
-              minHeight: 8,
-              backgroundColor: Colors.black.withOpacity(0.06),
-              color: const Color(0xFF20B486),
-            ),
+          const SizedBox(height: 18),
+          
+          // 进度条
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      total > 0 ? '知识图谱节点掌握率: ${(progress * 100).toInt()}%' : '暂无知识图谱数据',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.black87),
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: progress.clamp(0.0, 1.0),
+                        minHeight: 8,
+                        backgroundColor: Colors.black.withOpacity(0.06),
+                        color: const Color(0xFF20B486),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Text(
+                total > 0 ? '$mastered / $total' : '0/0',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Colors.black54),
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
-          Text(
-            total > 0 ? '已掌握 $mastered / $total 个知识节点' : '开始对话或导入真题后，会逐步生成你的知识地图。',
-            style: const TextStyle(fontSize: 13.5, color: Colors.black87, fontWeight: FontWeight.w600),
+          const SizedBox(height: 20),
+          
+          // 核心指标块
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7F8FC),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('预估分', style: TextStyle(color: Colors.black45, fontSize: 11, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      Text('$estimatedScore', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 2),
+                      Text(
+                        estimatedScore is int ? '+${(estimatedScore - 130).clamp(0, 99)} 提升' : '--',
+                        style: const TextStyle(color: Color(0xFF20B486), fontSize: 10, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7F8FC),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('正确率', style: TextStyle(color: Colors.black45, fontSize: 11, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      Text(accuracyText, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 2),
+                      Text(
+                        accuracyDelta,
+                        style: const TextStyle(color: Color(0xFF5B5FEF), fontSize: 10, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
+
+          // 薄弱点
           if (weakLabels.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
+            const Text(
+              '待攻克薄弱点 (优先专项练习):',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.black87),
+            ),
+            const SizedBox(height: 10),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -508,76 +717,3 @@ class _WeakPointChip extends StatelessWidget {
     );
   }
 }
-
-class _InsightStrip extends StatelessWidget {
-  const _InsightStrip({required this.data});
-
-  final HomeData data;
-
-  @override
-  Widget build(BuildContext context) {
-    // 预估分：基于正确率和练习量的简单估算，基准 130 + 加分
-    final estimatedScore = data.overallAccuracy >= 0
-        ? (130 + data.overallAccuracy * 40 + (data.todayTotal > 0 ? 6 : 0)).toInt()
-        : '--';
-
-    // 正确率
-    final accuracyText = data.todayAccuracy >= 0
-        ? '${(data.todayAccuracy * 100).toInt()}%'
-        : data.overallAccuracy >= 0
-            ? '${(data.overallAccuracy * 100).toInt()}%'
-            : '--';
-
-    // 正确率变化（相对全局来说今日的变化）
-    final accuracyDelta = data.todayAccuracy >= 0 && data.overallAccuracy >= 0
-        ? '${((data.todayAccuracy - data.overallAccuracy) * 100).toInt()}%'
-        : '今日';
-
-    // 待背
-    final reviewText = data.dueReviewCount > 0 ? '${data.dueReviewCount}' : '0';
-    final reviewDelta = data.dueReviewCount > 0 ? '待复习' : '已完成';
-
-    return Row(
-      children: [
-        Expanded(child: _MetricCard(title: '预估分', value: '$estimatedScore', delta: estimatedScore is int ? '+${(estimatedScore - 130).clamp(0, 99)}' : '--')),
-        const SizedBox(width: 12),
-        Expanded(child: _MetricCard(title: '正确率', value: accuracyText, delta: accuracyDelta)),
-        const SizedBox(width: 12),
-        Expanded(child: _MetricCard(title: '待复习', value: reviewText, delta: reviewDelta)),
-      ],
-    );
-  }
-}
-
-class _MetricCard extends StatelessWidget {
-  const _MetricCard({required this.title, required this.value, required this.delta});
-
-  final String title;
-  final String value;
-  final String delta;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.black.withOpacity(0.04)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(color: Colors.black54, fontSize: 12)),
-          const SizedBox(height: 8),
-          Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 2),
-          Text(delta, style: const TextStyle(color: Color(0xFF20B486), fontWeight: FontWeight.w700, fontSize: 12)),
-        ],
-      ),
-    );
-  }
-}
-
-
-

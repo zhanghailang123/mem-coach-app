@@ -40,7 +40,7 @@ class _InsightPageState extends State<InsightPage> {
           final dailyStats = (data['daily_stats'] as List?)?.cast<Map<dynamic, dynamic>>() ?? [];
 
           return ListView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 100),
             children: [
               _ScoreCard(
                 totalQuestions: totalQuestions,

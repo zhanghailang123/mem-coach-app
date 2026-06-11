@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../coach/presentation/coach_home_page.dart';
@@ -22,33 +23,144 @@ class _AppShellPageState extends State<AppShellPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (index) {
-          setState(() => _currentIndex = index);
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.psychology_alt_outlined),
-            selectedIcon: Icon(Icons.psychology_alt_rounded),
-            label: 'AI 教练',
+      // 使用 Stack 叠加悬浮 Dock 在主页面之上
+      body: Stack(
+        children: [
+          IndexedStack(
+            index: _currentIndex,
+            children: _pages,
           ),
-          NavigationDestination(
-            icon: Icon(Icons.insights_outlined),
-            selectedIcon: Icon(Icons.insights_rounded),
-            label: '学情',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.account_tree_outlined),
-            selectedIcon: Icon(Icons.account_tree_rounded),
-            label: '知识库',
+          Positioned(
+            left: 24,
+            right: 24,
+            bottom: 20 + bottomPadding,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                child: Container(
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.78),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.35),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.06),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      // 弹性滑动背景滑块
+                      AnimatedAlign(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutBack,
+                        alignment: Alignment(
+                          _currentIndex == 0 ? -1.0 : (_currentIndex == 1 ? 0.0 : 1.0),
+                          0.0,
+                        ),
+                        child: FractionallySizedBox(
+                          widthFactor: 1 / 3,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(22),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // 前景导航按钮列表
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildTabItem(
+                              index: 0,
+                              icon: Icons.psychology_alt_outlined,
+                              selectedIcon: Icons.psychology_alt_rounded,
+                              label: 'AI 教练',
+                            ),
+                          ),
+                          Expanded(
+                            child: _buildTabItem(
+                              index: 1,
+                              icon: Icons.insights_outlined,
+                              selectedIcon: Icons.insights_rounded,
+                              label: '学情',
+                            ),
+                          ),
+                          Expanded(
+                            child: _buildTabItem(
+                              index: 2,
+                              icon: Icons.account_tree_outlined,
+                              selectedIcon: Icons.account_tree_rounded,
+                              label: '知识库',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTabItem({
+    required int index,
+    required IconData icon,
+    required IconData selectedIcon,
+    required String label,
+  }) {
+    final isSelected = _currentIndex == index;
+    final color = isSelected
+        ? Theme.of(context).colorScheme.primary
+        : Colors.black54;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        setState(() => _currentIndex = index);
+      },
+      child: Center(
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 150),
+          scale: isSelected ? 1.05 : 1.0,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isSelected ? selectedIcon : icon,
+                color: color,
+                size: 22,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w900 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
