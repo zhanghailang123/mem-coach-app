@@ -46,8 +46,11 @@ class MemCoachChannelBridge(
             "pdf.parseStatus" -> getPdfParseStatus(arguments)
 
             "pdf.list" -> listPdfs()
+            "pdf.questions" -> listPdfQuestions(arguments)
+            "pdf.deleteQuestions" -> deletePdfQuestions(arguments)
 
             "insight.getSummary" -> getInsightSummary()
+
             "exam.getRandomQuestions" -> getRandomQuestions(arguments)
             "exam.submitAnswer" -> submitAnswer(arguments)
             "knowledge.getTree" -> getKnowledgeTree(arguments)
@@ -66,9 +69,39 @@ class MemCoachChannelBridge(
 
     private suspend fun deletePdf(arguments: Map<String, Any?>): Map<String, Any?> {
         val id = arguments["id"] as? String ?: return mapOf("error" to "id is required")
+        val deleteQuestions = arguments["delete_questions"] as? Boolean ?: true
+        val document = pdfRepository.getDocument(id)
+        val deletedQuestionCount = if (deleteQuestions) {
+            deleteQuestionsForDocument(id, document?.fileName)
+        } else {
+            0
+        }
         pdfRepository.deleteDocument(id)
-        return mapOf("id" to id, "deleted" to true)
+        return mapOf("id" to id, "deleted" to true, "deleted_question_count" to deletedQuestionCount)
     }
+
+    private suspend fun listPdfQuestions(arguments: Map<String, Any?>): List<Map<String, Any?>> {
+        val id = arguments["id"] as? String ?: return emptyList()
+        val document = pdfRepository.getDocument(id)
+        val questions = examQuestionDao.getBySourceDocumentId(id).ifEmpty {
+            document?.fileName?.let { examQuestionDao.getBySourceFile(it) } ?: emptyList()
+        }
+        return questions.map { it.toQuestionMap() }
+    }
+
+    private suspend fun deletePdfQuestions(arguments: Map<String, Any?>): Map<String, Any?> {
+        val id = arguments["id"] as? String ?: return mapOf("error" to "id is required")
+        val document = pdfRepository.getDocument(id)
+        val deletedCount = deleteQuestionsForDocument(id, document?.fileName)
+        return mapOf("id" to id, "deleted_question_count" to deletedCount)
+    }
+
+    private suspend fun deleteQuestionsForDocument(documentId: String, sourceFile: String?): Int {
+        val byDocumentId = examQuestionDao.deleteBySourceDocumentId(documentId)
+        val bySourceFile = sourceFile?.takeIf { it.isNotBlank() }?.let { examQuestionDao.deleteBySourceFile(it) } ?: 0
+        return byDocumentId + bySourceFile
+    }
+
 
     private fun getActivePdfJobs(): List<String> {
         return pipelineService.getActiveJobIds()
@@ -252,7 +285,7 @@ class MemCoachChannelBridge(
     private suspend fun uploadPdf(arguments: Map<String, Any?>): Map<String, Any?> {
 
         val path = arguments["file_path"] as? String ?: return mapOf("error" to "file_path is required")
-        val subject = arguments["subject"] as? String
+        val subject = normalizeSubject(arguments["subject"] as? String)
         val year = when (val rawYear = arguments["year"]) {
             is Int -> rawYear
             is Long -> rawYear.toInt()
@@ -264,7 +297,14 @@ class MemCoachChannelBridge(
         val jobId = "pdf_job_${System.currentTimeMillis()}"
 
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            pipelineService.processPdf(java.io.File(document.localPath), subject ?: "unknown", year ?: 0, jobId)
+            pipelineService.processPdf(
+                pdfFile = java.io.File(document.localPath),
+                subject = subject,
+                year = year ?: 0,
+                jobId = jobId,
+                sourceDocumentId = document.id
+            )
+
         }
 
         return document.toMap().toMutableMap().apply {
@@ -317,36 +357,51 @@ class MemCoachChannelBridge(
         return list
     }
 
+    private fun cn.com.memcoach.data.entity.ExamQuestion.toQuestionMap(): Map<String, Any?> {
+        return mapOf(
+            "id" to id,
+            "year" to year,
+            "subject" to subject,
+            "section" to (section ?: ""),
+            "question_number" to questionNumber,
+            "type" to type,
+            "topic" to (topic ?: ""),
+            "difficulty" to (difficulty ?: ""),
+            "stem" to stem,
+            "options" to (options ?: "{}"),
+            "answer" to (answer ?: ""),
+            "explanation" to (explanation ?: ""),
+            "source_file" to sourceFile,
+            "source_document_id" to (sourceDocumentId ?: ""),
+            "source_page" to sourcePage,
+            "source_page_type" to (sourcePageType ?: ""),
+            "source_text" to (sourceText ?: ""),
+            "answer_source_page" to answerSourcePage,
+            "answer_source_text" to (answerSourceText ?: ""),
+            "merge_status" to mergeStatus,
+            "parse_confidence" to parseConfidence,
+            "parse_status" to parseStatus,
+            "parse_notes" to (parseNotes ?: "")
+        )
+    }
+
     private suspend fun getRandomQuestions(arguments: Map<String, Any?>): List<Map<String, Any?>> {
 
-        val subject = arguments["subject"] as? String ?: "logic"
+        val subject = normalizeSubject(arguments["subject"] as? String)
+
+        val section = normalizeSection(arguments["section"] as? String)
         val count = (arguments["count"] as? Int) ?: 5
         val topic = arguments["topic"] as? String
 
         val questions = examQuestionDao.search(
             subject = subject,
+            section = section,
             topic = topic,
             limit = count * 2 // 获取更多以便随机抽取
         ).shuffled().take(count)
 
-        return questions.map { q ->
-            mapOf(
-                "id" to q.id,
-                "year" to q.year,
-                "subject" to q.subject,
-                "type" to q.type,
-                "topic" to (q.topic ?: ""),
-                "difficulty" to (q.difficulty ?: ""),
-                "stem" to q.stem,
-                "options" to (q.options ?: "{}"),
-                "answer" to (q.answer ?: ""),
-                "explanation" to (q.explanation ?: ""),
-                "source_file" to q.sourceFile,
-                "source_page" to q.sourcePage,
-                "parse_confidence" to q.parseConfidence,
-                "parse_status" to q.parseStatus
-            )
-        }
+        return questions.map { it.toQuestionMap() }
+
     }
 
     private suspend fun submitAnswer(arguments: Map<String, Any?>): Map<String, Any?> {
@@ -430,7 +485,7 @@ class MemCoachChannelBridge(
     }
 
     private suspend fun getKnowledgeTree(arguments: Map<String, Any?>): List<Map<String, Any?>> {
-        val subject = arguments["subject"] as? String ?: "logic"
+        val subject = normalizeSubject(arguments["subject"] as? String)
 
         val rootNodes = knowledgeNodeDao.getRootNodes(subject)
         val result = mutableListOf<Map<String, Any?>>()
@@ -734,6 +789,26 @@ class MemCoachChannelBridge(
                 .takeIf { it.isNotEmpty() }
         } catch (e: Exception) {
             null
+        }
+    }
+
+    private fun normalizeSubject(raw: String?): String {
+        return when (raw?.trim()?.lowercase()) {
+            null, "", "unknown", "null", "management_comprehensive", "management", "comprehensive", "管综", "管理类综合", "管理类综合能力",
+            "math", "logic", "writing", "数学", "逻辑", "写作" -> "management_comprehensive"
+            "english", "english2", "english_ii", "英语", "英语二" -> "english"
+            else -> raw.trim()
+        }
+    }
+
+    private fun normalizeSection(raw: String?): String? {
+        return when (raw?.trim()?.lowercase()) {
+            null, "", "null", "all", "全部" -> null
+            "math", "数学" -> "math"
+            "logic", "逻辑" -> "logic"
+            "writing", "写作" -> "writing"
+            "english", "英语", "english2", "english_ii", "英语二" -> "english"
+            else -> raw.trim()
         }
     }
 

@@ -96,13 +96,33 @@ class MemCoachNativeBridge {
     return result ?? const [];
   }
 
-  static Future<void> deletePdf(String id) async {
-    await _methodChannel.invokeMethod<void>('pdf.delete', {
+  static Future<Map<String, dynamic>> deletePdf(String id, {bool deleteQuestions = true}) async {
+    final result = await _methodChannel.invokeMapMethod<String, dynamic>('pdf.delete', {
+      'id': id,
+      'delete_questions': deleteQuestions,
+    });
+    return result ?? {};
+  }
+
+  static Future<List<Map<String, dynamic>>> listPdfQuestions(String id) async {
+    final result = await _methodChannel.invokeListMethod<dynamic>('pdf.questions', {
       'id': id,
     });
+    return (result ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  static Future<Map<String, dynamic>> deletePdfQuestions(String id) async {
+    final result = await _methodChannel.invokeMapMethod<String, dynamic>('pdf.deleteQuestions', {
+      'id': id,
+    });
+    return result ?? {};
   }
 
   static Future<Map<String, dynamic>> getInsightSummary() async {
+
 
     final result = await _methodChannel.invokeMapMethod<String, dynamic>('insight.getSummary');
     return result ?? {};

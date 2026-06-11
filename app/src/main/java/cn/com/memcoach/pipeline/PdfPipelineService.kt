@@ -2,6 +2,7 @@ package cn.com.memcoach.pipeline
 
 import android.content.Context
 import cn.com.memcoach.agent.AgentLlmClient
+import cn.com.memcoach.agent.AgentTraceLogger
 import cn.com.memcoach.agent.ChatMessage
 import cn.com.memcoach.data.dao.ExamQuestionDao
 import cn.com.memcoach.data.entity.ExamQuestion
@@ -35,32 +36,41 @@ class PdfPipelineService(
     companion object {
         /** LLM 结构化解析 System Prompt */
         private val STRUCTURING_SYSTEM_PROMPT = """
-你是一个考研真题结构化工具。输入是从PDF提取的原始文本，输出是JSON格式的题目数据。
+你是一个 MEM 考研真题结构化工具。输入是已经预清洗的 PDF 页/题块文本，输出严格 JSON 数组。
 
-## 规则
-1. 每道题必须拆分为独立条目
-2. 选择题提取选项（A/B/C/D），填空题标注空白处 [___]，解答题保留完整题干
-3. 如果题目引用图表，标注 [图片:描述]
-4. 尽量推断知识点分类和难度
-5. 答案和解析如果原文有就提取，没有留空，严禁根据常识或模型知识补答案
-6. 输出严格JSON数组格式，不要任何前缀或后缀文字
-7. **特别注意**：对于结构化提取任务，不受科目限制，请照常解析数学、英语或任何其他科目的题目。
-8. 必须返回 source_page、source_text、confidence、parse_notes，方便后续校对。
+## 科目模型
+1. subject 只能是 management_comprehensive 或 english。
+2. 管综内部用 section 区分：math、logic、writing。
+3. 英语用 subject=english、section=english。
+4. 管综题号映射：1-25 为 math，26-55 为 logic，56-57 为 writing。
+
+## 抽取规则
+1. 每道题必须拆分为独立条目，只抽取文本中明确出现的内容。
+2. 题干页只抽题干和选项；答案页只抽答案和解析；不要根据常识或模型知识补答案。
+3. 选择题尽量保留 A/B/C/D/E 选项；共用题干要复制到关联题目的 stem 中。
+4. 输出必须包含 question_number、subject、section、source_page、source_page_type、source_text、confidence、parse_notes。
+5. 无法确定答案或解析时 answer/explanation 置空，confidence 降低并写 parse_notes。
+6. 输出严格 JSON 数组，不要任何前缀、后缀或 Markdown。
 
 ## 输出格式
 [{
-    "id": "logic_2023_1",
-    "year": 2023,
-    "subject": "logic",
+    "id": "management_comprehensive_2025_26",
+    "year": 2025,
+    "subject": "management_comprehensive",
+    "section": "logic",
+    "question_number": 26,
     "topic": "conditional_inference",
     "type": "choice",
     "difficulty": "medium",
     "stem": "题干内容...",
-    "options": {"A":"选项A","B":"选项B","C":"选项C","D":"选项D"},
+    "options": {"A":"选项A","B":"选项B","C":"选项C","D":"选项D","E":"选项E"},
     "answer": "B",
     "explanation": "解析内容...",
     "source_page": 12,
+    "source_page_type": "question_page",
     "source_text": "原文证据片段...",
+    "answer_source_page": 18,
+    "answer_source_text": "答案解析原文片段...",
     "confidence": 0.86,
     "parse_notes": ""
 }]
@@ -88,6 +98,21 @@ class PdfPipelineService(
         val questionsInserted: Int = 0,
         val questionsDuplicate: Int = 0,
         val errors: List<String> = emptyList()
+    )
+
+    private data class PdfTextPage(
+        val pageNumber: Int,
+        val text: String,
+        val pageType: String,
+        val sectionHint: String?
+    )
+
+    private data class PdfParseBatch(
+        val index: Int,
+        val text: String,
+        val pageType: String,
+        val sectionHint: String?,
+        val pageNumbers: List<Int>
     )
 
     // 任务状态管理（内存存储，后续迁移到数据库）
@@ -121,13 +146,28 @@ class PdfPipelineService(
         subject: String,
         year: Int,
         jobId: String,
+        sourceDocumentId: String? = null,
         callback: ProgressCallback? = null
     ): ParseResult = withContext(Dispatchers.IO) {
+
+        val normalizedSubject = normalizeSubject(subject)
+        val pipelineTraceId = AgentTraceLogger.newTraceId("pdf_pipeline")
         val job = ParseJob(
             filePath = pdfFile.absolutePath,
-            subject = subject,
+            subject = normalizedSubject,
             year = year,
             ocrUtil = PdfOcrUtil(context)
+        )
+        AgentTraceLogger.event(
+            "pdf_pipeline_start",
+            mapOf(
+                "trace_id" to pipelineTraceId,
+                "file" to pdfFile.name,
+                "subject_input" to subject,
+                "subject" to normalizedSubject,
+                "year" to year,
+                "job_id" to jobId
+            )
         )
         jobs[jobId] = job
 
@@ -211,26 +251,45 @@ class PdfPipelineService(
             // ─── Step 3: LLM 结构化解析 ───
             updateStep("structuring")
 
-            // 优先按题号切为候选题块，减少跨题串题；候选不足时回退到页分块。
-            val candidateBlocks = splitQuestionCandidates(rawText)
-            val batches = if (candidateBlocks.size >= 2) {
-                candidateBlocks.chunked(4).map { it.joinToString("\n\n--- 下一题 ---\n\n") }
-            } else {
-                chunkByPages(rawText, pagesPerBatch = 2, overlapChars = 500)
-            }
+            val pages = splitPages(rawText)
+            val batches = buildParseBatches(pages, normalizedSubject)
+            AgentTraceLogger.event(
+                "pdf_batches_built",
+                mapOf(
+                    "trace_id" to pipelineTraceId,
+                    "page_count" to pages.size,
+                    "batch_count" to batches.size,
+                    "page_types" to pages.groupingBy { it.pageType }.eachCount(),
+                    "sections" to pages.mapNotNull { it.sectionHint }.groupingBy { it }.eachCount()
+                )
+            )
             val allQuestions = mutableListOf<ExamQuestion>()
+
+            val completedBatches = java.util.concurrent.atomic.AtomicInteger(0)
 
             // 并发处理（最大并发 3）
             coroutineScope {
-                val deferredResults = batches.mapIndexed { index, batchText ->
+                val deferredResults = batches.map { batch ->
                     async(Dispatchers.IO) {
                         var structuredJson = ""
                         var lastError: Exception? = null
+                        AgentTraceLogger.event(
+                            "pdf_batch_start",
+                            mapOf(
+                                "trace_id" to pipelineTraceId,
+                                "batch_index" to batch.index,
+                                "page_type" to batch.pageType,
+                                "section_hint" to batch.sectionHint,
+                                "pages" to batch.pageNumbers,
+                                "text_length" to batch.text.length,
+                                "text_preview" to batch.text.take(600)
+                            )
+                        )
                         
                         // 增加重试机制：最多 3 次
                         for (attempt in 1..3) {
                             try {
-                                structuredJson = parseWithLLM(batchText, subject, year)
+                                structuredJson = parseWithLLM(batch, normalizedSubject, year)
                                 if (structuredJson.startsWith("[LLM 请求失败")) {
                                     throw Exception(structuredJson.removeSurrounding("[", "]"))
                                 }
@@ -243,23 +302,49 @@ class PdfPipelineService(
                             }
                         }
 
-                        if (structuredJson.isBlank() || structuredJson.startsWith("[LLM 请求失败")) {
+                        val parsedResult = if (structuredJson.isBlank() || structuredJson.startsWith("[LLM 请求失败")) {
+                            AgentTraceLogger.event(
+                                "pdf_batch_error",
+                                mapOf(
+                                    "trace_id" to pipelineTraceId,
+                                    "batch_index" to batch.index,
+                                    "error_message" to lastError?.message
+                                )
+                            )
                             null
                         } else {
                             try {
                                 // 注入 batch 索引以保持 ID 唯一且有序
                                 parseQuestionJson(
                                     structuredJson,
-                                    subject,
+                                    normalizedSubject,
                                     year,
                                     sourceFile = pdfFile.name,
-                                    batchText = batchText,
-                                    batchIndex = index
-                                )
+                                    sourceDocumentId = sourceDocumentId,
+                                    batchText = batch.text,
+                                    batchIndex = batch.index,
+                                    batchPageType = batch.pageType,
+                                    batchSectionHint = batch.sectionHint
+                                ).also { parsed ->
+                                    AgentTraceLogger.event(
+                                        "pdf_batch_success",
+                                        mapOf(
+                                            "trace_id" to pipelineTraceId,
+                                            "batch_index" to batch.index,
+                                            "parsed_count" to parsed.size
+                                        )
+                                    )
+                                }
                             } catch (e: Exception) {
                                 null
                             }
                         }
+                        
+                        // 在 async 内部实时更新进度
+                        val completed = completedBatches.incrementAndGet()
+                        updateProgress(50 + (completed * 35 / batches.size.coerceAtLeast(1)))
+                        
+                        parsedResult
                     }
                 }
 
@@ -267,8 +352,6 @@ class PdfPipelineService(
                 deferredResults.awaitAll().forEachIndexed { index, batchQuestions ->
                     if (batchQuestions != null) {
                         allQuestions.addAll(batchQuestions)
-                        // 更新进度：50% + 每批次的占比
-                        updateProgress(50 + ((index + 1) * 35 / batches.size.coerceAtLeast(1)))
                     } else {
                         job.errors.add("第 ${index + 1} 批解析失败")
                     }
@@ -284,11 +367,17 @@ class PdfPipelineService(
             job.parsedQuestions = allQuestions.size
             callback?.onMessage("解析完成，共识别 ${allQuestions.size} 道题目")
 
+            // ─── Step 3.5: 合并题干与答案 ───
+            updateStep("merging")
+            callback?.onMessage("正在按题号合并题干与答案解析并尝试回溯缺失信息...")
+            val mergedQuestions = mergeQuestions(allQuestions, rawText, normalizedSubject, year)
+            callback?.onMessage("合并完成，共 ${mergedQuestions.size} 道完整题目")
+
             // ─── Step 4: 去重检测 ───
             updateStep("dedup")
             callback?.onMessage("正在进行去重检测...")
 
-            val (newQuestions, dupCount) = deduplicateQuestions(allQuestions)
+            val (newQuestions, dupCount) = deduplicateQuestions(mergedQuestions)
             updateProgress(85)
             callback?.onMessage("去重完成：新增 ${newQuestions.size} 题，重复 $dupCount 题")
 
@@ -370,27 +459,39 @@ class PdfPipelineService(
      * 调用 LLM 进行结构化解析。
      */
     private suspend fun parseWithLLM(
-
-        chunkText: String,
+        batch: PdfParseBatch,
         subject: String,
         year: Int
     ): String {
+        val modeInstruction = when (batch.pageType) {
+            "answer_page" -> "当前片段主要是答案解析页：优先抽取 question_number、answer、explanation、answer_source_page、answer_source_text；题干缺失时 stem 可留空或只填可定位的简短题号说明。"
+            "question_page" -> "当前片段主要是试题页：优先抽取 question_number、stem、options、source_page、source_text；不要补写答案解析。"
+            "mixed_page" -> "当前片段可能同时包含试题和答案解析：请按题号分开抽取，能确定答案来源时填写 answer_source_text。"
+            else -> "当前片段噪声较多：只抽取结构完整且能定位题号的题目。"
+        }
         val userPrompt = """
-## PDF 原始文本 (片段)
+## PDF 预清洗片段
 
-来源科目：$subject
+大科目 subject：$subject
 年份：$year
+页类型：${batch.pageType}
+模块提示 section：${batch.sectionHint ?: "unknown"}
+页码范围：${batch.pageNumbers.joinToString(",")}
 
-$chunkText
+$modeInstruction
+
+${batch.text}
 
 请将以上文本解析为结构化题目 JSON 数组。要求：
 1. 只抽取文本中明确出现的题目，不要编造题干、答案或解析。
-2. 如果答案或解析未在文本中明确出现，对应字段必须返回空字符串。
-3. 选择题必须尽量保留 A/B/C/D 选项；选项缺失时仍可返回，但 confidence 需要降低。
-4. source_page 填题目最可能来自的页码；无法判断填 0。
-5. source_text 填支持该题的原始片段，最多 800 字。
-6. confidence 返回 0 到 1；OCR 乱码、题干不完整、选项不完整或答案不确定时低于 0.7。
-7. parse_notes 简短说明不确定原因；确定时可为空。
+2. subject 必须使用 $subject；如果是管综，section 按题号映射或模块提示填写 math/logic/writing。
+3. 必须返回 question_number；无法判断题号的片段不要输出。
+4. 如果答案或解析未在文本中明确出现，对应字段必须返回空字符串。
+5. 选择题必须尽量保留 A/B/C/D/E 选项；选项缺失时仍可返回，但 confidence 需要降低。
+6. source_page 填题目最可能来自的页码；source_page_type 填 ${batch.pageType}。
+7. source_text 和 answer_source_text 均只填原文证据片段，最多 800 字。
+8. confidence 返回 0 到 1；OCR 乱码、题干不完整、选项不完整或答案不确定时低于 0.7。
+9. parse_notes 简短说明不确定原因；确定时可为空。
 """.trimIndent()
 
         val messages = listOf(
@@ -420,7 +521,17 @@ $chunkText
             }
         }
 
-        return extractJsonArray(content)
+        val jsonStr = extractJsonArray(content)
+        
+        // 数据完整性校验：如果提取的 JSON 为空数组，但原文本包含明显的题号特征，抛出异常以触发外层重试
+        if (jsonStr == "[]" || jsonStr.isBlank()) {
+            val hasQuestionMarkers = Regex("(?m)^\\s*(?:[0-9]{1,3})[\\.、)]\\s*").containsMatchIn(batch.text)
+            if (hasQuestionMarkers) {
+                throw Exception("LLM 返回空数组，但文本中检测到题号特征，触发重试")
+            }
+        }
+        
+        return jsonStr
     }
 
     private fun extractJsonArray(content: String): String {
@@ -466,10 +577,120 @@ $chunkText
             val end = matches.getOrNull(index + 1)?.range?.first ?: text.length
             text.substring(start, end)
                 .trim()
-                .takeIf { candidate ->
-                    candidate.length >= 30 &&
-                        !candidate.contains(Regex("""(?m)^\s*(参考答案|答案解析|答案|解析)\s*[:：]?\s*$"""))
+                .takeIf { candidate -> candidate.length >= 30 }
+        }
+    }
+
+    private fun splitPages(text: String): List<PdfTextPage> {
+        val marker = Regex("""(?m)^=== 第 (\d+) 页 ===\s*$""")
+        val matches = marker.findAll(text).toList()
+        if (matches.isEmpty()) {
+            val pageType = classifyPage(text)
+            return listOf(PdfTextPage(1, text.trim(), pageType, inferSectionFromText(text, normalizeSubject("management_comprehensive"))))
+        }
+        return matches.mapIndexed { index, match ->
+            val pageNumber = match.groupValues[1].toIntOrNull() ?: (index + 1)
+            val start = match.range.last + 1
+            val end = matches.getOrNull(index + 1)?.range?.first ?: text.length
+            val pageText = text.substring(start, end).trim()
+            val pageType = classifyPage(pageText)
+            PdfTextPage(
+                pageNumber = pageNumber,
+                text = pageText,
+                pageType = pageType,
+                sectionHint = inferSectionFromText(pageText, normalizeSubject("management_comprehensive"))
+            )
+        }.filter { it.text.isNotBlank() }
+    }
+
+    private fun classifyPage(text: String): String {
+        val normalized = text.take(1200)
+        val hasAnswer = normalized.contains(Regex("答案|解析|参考答案|【答案】|【解析】"))
+        val questionMarkers = Regex("(?m)^\\s*(?:[0-9]{1,3})[\\.、)]\\s*").findAll(text).count()
+        val hasOptions = text.contains(Regex("(?m)^\\s*[A-EＡ-Ｅ][\\.、]\\s*"))
+        return when {
+            hasAnswer && (questionMarkers >= 2 || hasOptions) -> "mixed_page"
+            hasAnswer -> "answer_page"
+            questionMarkers >= 2 || hasOptions -> "question_page"
+            else -> "noise_page"
+        }
+    }
+
+    private fun buildParseBatches(pages: List<PdfTextPage>, subject: String): List<PdfParseBatch> {
+        val effectivePages = pages.filter { it.pageType != "noise_page" && it.text.length >= 40 }
+        val questionBatches = effectivePages
+            .filter { it.pageType == "question_page" || it.pageType == "mixed_page" }
+            .flatMap { page ->
+                val blocks = splitQuestionCandidates("=== 第 ${page.pageNumber} 页 ===\n${page.text}")
+                if (blocks.size >= 2) {
+                    blocks.chunked(4).map { chunk ->
+                        PdfParseBatch(
+                            index = 0,
+                            text = chunk.joinToString("\n\n--- 下一题 ---\n\n"),
+                            pageType = page.pageType,
+                            sectionHint = page.sectionHint ?: inferSectionFromText(page.text, subject),
+                            pageNumbers = listOf(page.pageNumber)
+                        )
+                    }
+                } else {
+                    listOf(
+                        PdfParseBatch(
+                            index = 0,
+                            text = "=== 第 ${page.pageNumber} 页 ===\n${page.text}",
+                            pageType = page.pageType,
+                            sectionHint = page.sectionHint ?: inferSectionFromText(page.text, subject),
+                            pageNumbers = listOf(page.pageNumber)
+                        )
+                    )
                 }
+            }
+        val answerBatches = effectivePages
+            .filter { it.pageType == "answer_page" }
+            .chunked(2)
+            .map { chunk ->
+                PdfParseBatch(
+                    index = 0,
+                    text = chunk.joinToString("\n\n") { page -> "=== 第 ${page.pageNumber} 页 ===\n${page.text}" },
+                    pageType = "answer_page",
+                    sectionHint = chunk.mapNotNull { it.sectionHint }.firstOrNull(),
+                    pageNumbers = chunk.map { it.pageNumber }
+                )
+            }
+        return (questionBatches + answerBatches).mapIndexed { index, batch -> batch.copy(index = index) }
+            .ifEmpty { listOf(PdfParseBatch(0, pages.joinToString("\n\n") { "=== 第 ${it.pageNumber} 页 ===\n${it.text}" }, "mixed_page", null, pages.map { it.pageNumber })) }
+    }
+
+    private fun inferSectionFromText(text: String, subject: String): String? {
+        if (subject == "english") return "english"
+        val numbers = Regex("(?m)^\\s*(?:第\\s*)?(\\d{1,3})[\\.、)]\\s*").findAll(text)
+            .mapNotNull { it.groupValues.getOrNull(1)?.toIntOrNull() }
+            .toList()
+        val first = numbers.firstOrNull()
+        if (first != null) return inferSectionFromQuestionNumber(subject, first)
+        return when {
+            text.contains(Regex("写作|论证有效性|论说文")) -> "writing"
+            text.contains(Regex("逻辑|推理|削弱|加强|假设")) -> "logic"
+            text.contains(Regex("数学|函数|概率|方程|几何|数列")) -> "math"
+            else -> null
+        }
+    }
+
+    private fun inferSectionFromQuestionNumber(subject: String, questionNumber: Int?): String? {
+        if (subject == "english") return "english"
+        return when (questionNumber) {
+            in 1..25 -> "math"
+            in 26..55 -> "logic"
+            in 56..57 -> "writing"
+            else -> null
+        }
+    }
+
+    private fun normalizeSubject(raw: String): String {
+        return when (raw.trim().lowercase()) {
+            "management_comprehensive", "management", "comprehensive", "管综", "管理类综合", "管理类综合能力",
+            "math", "logic", "writing", "数学", "逻辑", "写作" -> "management_comprehensive"
+            "english", "english2", "english_ii", "英语", "英语二" -> "english"
+            else -> raw.trim().ifBlank { "management_comprehensive" }
         }
     }
 
@@ -530,8 +751,11 @@ $chunkText
         subject: String,
         year: Int,
         sourceFile: String,
+        sourceDocumentId: String?,
         batchText: String,
-        batchIndex: Int = 0
+        batchIndex: Int = 0,
+        batchPageType: String = "mixed_page",
+        batchSectionHint: String? = null
     ): List<ExamQuestion> {
         val jsonArray = JSONArray(jsonStr)
         val questions = mutableListOf<ExamQuestion>()
@@ -545,6 +769,13 @@ $chunkText
             val normalizedStem = normalizeForHash(stem)
             val stemHash = sha256(normalizedStem)
             val options = obj.optJSONObject("options")?.toString()
+            val rawSubject = obj.optString("subject", subject)
+            val normalizedSubject = normalizeSubject(rawSubject)
+            val questionNumber = obj.optInt("question_number", -1).takeIf { it > 0 }
+            val section = obj.optString("section", "")
+                .takeIf { it.isNotBlank() && it != "null" }
+                ?: inferSectionFromQuestionNumber(normalizedSubject, questionNumber)
+                ?: batchSectionHint
             val confidence = obj.optDouble("confidence", estimateConfidence(stem, options, obj.optString("answer", ""))).toFloat().coerceIn(0f, 1f)
             val sourceText = obj.optString("source_text", "")
                 .takeIf { it.isNotBlank() && it != "null" }
@@ -558,12 +789,29 @@ $chunkText
                 else -> "parsed"
             }
 
-            val fallbackId = "${subject}_${year}_${batchIndex + 1}_${i + 1}_${stemHash.take(12)}"
+            val fallbackId = if (questionNumber != null) {
+                "${normalizedSubject}_${year}_${questionNumber}_${stemHash.take(8)}"
+            } else {
+                "${normalizedSubject}_${year}_${batchIndex + 1}_${i + 1}_${stemHash.take(12)}"
+            }
+            val sourcePageType = obj.optString("source_page_type", batchPageType)
+                .takeIf { it.isNotBlank() && it != "null" }
+                ?: batchPageType
+            val answerSourceText = obj.optString("answer_source_text", "")
+                .takeIf { it.isNotBlank() && it != "null" }
+            val answerSourcePage = obj.optInt("answer_source_page", -1).takeIf { it > 0 }
+            val mergeStatus = when {
+                !answerSourceText.isNullOrBlank() && sourcePageType == "question_page" -> "merged"
+                sourcePageType == "answer_page" -> "answer_only"
+                else -> "question_only"
+            }
             val question = ExamQuestion(
                 id = obj.optString("id", "").takeIf { it.isNotBlank() && it != "null" }
                     ?: fallbackId,
                 year = obj.optInt("year", year),
-                subject = obj.optString("subject", subject),
+                subject = normalizedSubject,
+                section = section,
+                questionNumber = questionNumber,
                 chapter = obj.optString("chapter", ""),
                 topic = obj.optString("topic", ""),
                 type = obj.optString("type", "choice"),
@@ -573,9 +821,15 @@ $chunkText
                 answer = obj.optString("answer", ""),
                 explanation = obj.optString("explanation", ""),
                 sourceFile = sourceFile,
+                sourceDocumentId = sourceDocumentId,
                 sourcePage = obj.optInt("source_page", 0),
+
                 knowledgeTags = obj.optJSONArray("knowledge_tags")?.toString() ?: "",
                 sourceText = sourceText.take(1200),
+                sourcePageType = sourcePageType,
+                answerSourceText = answerSourceText?.take(1200),
+                answerSourcePage = answerSourcePage,
+                mergeStatus = mergeStatus,
                 stemHash = stemHash,
                 parseConfidence = confidence,
                 parseStatus = parseStatus,
@@ -612,6 +866,196 @@ $chunkText
         if (options.isNullOrBlank()) notes.add("选项缺失或无法识别")
         if (confidence < 0.55f) notes.add("解析置信度较低")
         return notes.takeIf { it.isNotEmpty() }?.joinToString("；")
+    }
+
+    /**
+     * 按 subject, section, questionNumber 合并 question_only 和 answer_only 记录
+     */
+    private suspend fun mergeQuestions(
+        questions: List<ExamQuestion>,
+        rawText: String,
+        subject: String,
+        year: Int
+    ): List<ExamQuestion> {
+        val mergedList = mutableListOf<ExamQuestion>()
+        
+        // 按照 year + subject + section + questionNumber 分组
+        val grouped = questions.groupBy { 
+            "${it.year}_${it.subject}_${it.section}_${it.questionNumber}" 
+        }
+
+        for ((key, group) in grouped) {
+            // 如果没有题号，无法合并，直接加入
+            if (key.endsWith("_null") || key.endsWith("_-1")) {
+                mergedList.addAll(group)
+                continue
+            }
+
+            val questionOnly = group.filter { it.mergeStatus == "question_only" || it.mergeStatus == "merged" }
+            val answerOnly = group.filter { it.mergeStatus == "answer_only" }
+
+            if (questionOnly.isEmpty()) {
+                // 只有答案，没有题干，尝试回溯
+                val bestA = answerOnly.maxByOrNull { it.parseConfidence } ?: answerOnly.first()
+                val qn = bestA.questionNumber
+                val section = bestA.section
+                
+                // 触发孤儿回溯
+                val recoveredQ = tryRecoverOrphanQuestion(qn, section, rawText, subject, year)
+                if (recoveredQ != null && recoveredQ.stem.isNotBlank()) {
+                    val mergedQ = bestA.copy(
+                        stem = recoveredQ.stem,
+                        options = recoveredQ.options,
+                        sourceText = recoveredQ.sourceText,
+                        sourcePage = recoveredQ.sourcePage,
+                        mergeStatus = "merged",
+                        parseStatus = "parsed",
+                        parseNotes = "通过回溯找回题干"
+                    )
+                    mergedList.add(mergedQ)
+                } else {
+                    // 回溯失败，保留但标记 needs_review
+                    mergedList.addAll(answerOnly.map { 
+                        it.copy(
+                            parseStatus = "needs_review", 
+                            parseNotes = "只有答案解析，缺失题干，回溯失败"
+                        ) 
+                    })
+                }
+                continue
+            }
+
+            // 以第一个 question_only 为基础，合并最优的 answer_only
+            val baseQ = questionOnly.maxByOrNull { it.parseConfidence } ?: questionOnly.first()
+            val bestA = answerOnly.maxByOrNull { it.parseConfidence }
+
+            if (bestA != null && baseQ.answer.isNullOrBlank()) {
+                // 执行合并
+                val mergedQ = baseQ.copy(
+                    answer = bestA.answer ?: baseQ.answer,
+                    explanation = bestA.explanation ?: baseQ.explanation,
+                    answerSourceText = bestA.answerSourceText ?: bestA.sourceText,
+                    answerSourcePage = bestA.answerSourcePage ?: bestA.sourcePage,
+                    mergeStatus = "merged",
+                    parseConfidence = (baseQ.parseConfidence + bestA.parseConfidence) / 2f,
+                    parseNotes = listOfNotNull(baseQ.parseNotes, bestA.parseNotes, "已与答案页合并").joinToString("；")
+                )
+                mergedList.add(mergedQ)
+                
+                // 将其他未合并的同题号记录也加进去，但置信度降低，避免丢失信息
+                val others = group.filter { it.id != baseQ.id && it.id != bestA.id }
+                mergedList.addAll(others.map { it.copy(parseConfidence = it.parseConfidence * 0.8f) })
+            } else if (baseQ.answer.isNullOrBlank() && bestA == null) {
+                // 有题干没有答案，尝试回溯答案
+                val qn = baseQ.questionNumber
+                val section = baseQ.section
+                val recoveredA = tryRecoverOrphanAnswer(qn, section, rawText, subject, year)
+                if (recoveredA?.answer?.isNotBlank() == true) {
+                    val mergedQ = baseQ.copy(
+                        answer = recoveredA.answer,
+                        explanation = recoveredA.explanation,
+                        answerSourceText = recoveredA.answerSourceText,
+                        answerSourcePage = recoveredA.answerSourcePage,
+                        mergeStatus = "merged",
+                        parseNotes = listOfNotNull(baseQ.parseNotes, "通过回溯找回答案").joinToString("；")
+                    )
+                    mergedList.add(mergedQ)
+                    val others = group.filter { it.id != baseQ.id }
+                    mergedList.addAll(others.map { it.copy(parseConfidence = it.parseConfidence * 0.8f) })
+                } else {
+                    mergedList.addAll(group)
+                }
+            } else {
+                mergedList.addAll(group)
+            }
+        }
+
+        return mergedList
+    }
+
+    private suspend fun tryRecoverOrphanQuestion(
+        questionNumber: Int?,
+        section: String?,
+        rawText: String,
+        subject: String,
+        year: Int
+    ): ExamQuestion? {
+        if (questionNumber == null) return null
+        val prompt = """
+你是一个 MEM 考研真题回溯工具。
+在初步解析中，我们只找到了第 $questionNumber 题的答案，但遗漏了题干。
+请在以下完整文档文本中，专门寻找并提取第 $questionNumber 题的题干和选项。
+如果找到，请严格返回 JSON 数组格式，包含 stem, options, source_text, source_page。
+如果没有找到，请返回空数组 []。
+
+## 文档内容片段 (截取前 20000 字)
+${rawText.take(20000)}
+"""
+        return performRecovery(prompt, subject, year, questionNumber, section)
+    }
+
+    private suspend fun tryRecoverOrphanAnswer(
+        questionNumber: Int?,
+        section: String?,
+        rawText: String,
+        subject: String,
+        year: Int
+    ): ExamQuestion? {
+        if (questionNumber == null) return null
+        val prompt = """
+你是一个 MEM 考研真题回溯工具。
+在初步解析中，我们只找到了第 $questionNumber 题的题干，但遗漏了答案和解析。
+请在以下完整文档文本中，专门寻找并提取第 $questionNumber 题的答案和解析。
+如果找到，请严格返回 JSON 数组格式，包含 answer, explanation, answer_source_text, answer_source_page。
+如果没有找到，请返回空数组 []。
+
+## 文档内容片段 (截取后 20000 字，答案通常在后面)
+${rawText.takeLast(20000)}
+"""
+        return performRecovery(prompt, subject, year, questionNumber, section)
+    }
+
+    private suspend fun performRecovery(
+        userPrompt: String,
+        subject: String,
+        year: Int,
+        questionNumber: Int,
+        section: String?
+    ): ExamQuestion? {
+        val messages = listOf(
+            ChatMessage(role = "system", content = STRUCTURING_SYSTEM_PROMPT),
+            ChatMessage(role = "user", content = userPrompt)
+        )
+        try {
+            val result = llmClient.completeTurn(messages = messages, modelId = null)
+            var content = result.content.trim()
+            if (content.startsWith("```json")) content = content.removePrefix("```json").trim()
+            else if (content.startsWith("```")) content = content.removePrefix("```").trim()
+            if (content.endsWith("```")) content = content.removeSuffix("```").trim()
+            content = extractJsonArray(content)
+            
+            val jsonArray = JSONArray(content)
+            if (jsonArray.length() > 0) {
+                val obj = jsonArray.getJSONObject(0)
+                return ExamQuestion(
+                    id = "", year = year, subject = subject, section = section,
+                    questionNumber = questionNumber,
+                    stem = obj.optString("stem", ""),
+                    options = obj.optJSONObject("options")?.toString(),
+                    answer = obj.optString("answer", ""),
+                    explanation = obj.optString("explanation", ""),
+                    sourceText = obj.optString("source_text", ""),
+                    sourcePage = obj.optInt("source_page", 0),
+                    answerSourceText = obj.optString("answer_source_text", ""),
+                    answerSourcePage = obj.optInt("answer_source_page", 0),
+                    createdAt = 0, updatedAt = 0, sourceFile = "", sourcePageType = "", mergeStatus = "", parseStatus = "",
+                    chapter = "", topic = "", type = "choice", difficulty = "medium", knowledgeTags = "", stemHash = "", parseConfidence = 1.0f, parseNotes = ""
+                )
+            }
+        } catch (e: Exception) {
+            // 回溯失败忽略
+        }
+        return null
     }
 
     /**

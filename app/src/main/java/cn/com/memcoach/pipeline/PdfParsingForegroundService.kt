@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import cn.com.memcoach.MainActivity
+import cn.com.memcoach.MemCoachApplication
 import cn.com.memcoach.data.AppDatabase
 import cn.com.memcoach.agent.llm.AgentLlmRouter
 import cn.com.memcoach.agent.llm.OpenAICompatibleAgentLlmClient
@@ -33,13 +34,15 @@ class PdfParsingForegroundService : Service() {
         private const val CHANNEL_ID = "pdf_parsing_channel"
         private const val NOTIFICATION_ID = 1001
 
-        fun start(context: Context, filePath: String, subject: String, year: Int, jobId: String) {
+        fun start(context: Context, filePath: String, subject: String, year: Int, jobId: String, sourceDocumentId: String? = null) {
             val intent = Intent(context, PdfParsingForegroundService::class.java).apply {
                 putExtra("file_path", filePath)
                 putExtra("subject", subject)
                 putExtra("year", year)
                 putExtra("job_id", jobId)
+                putExtra("source_document_id", sourceDocumentId)
             }
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -52,14 +55,7 @@ class PdfParsingForegroundService : Service() {
         super.onCreate()
         createNotificationChannel()
 
-        // 临时初始化 Pipeline（实际应通过 DI 或 Application 获取）
-        val db = AppDatabase.getInstance(applicationContext)
-        val llmClient = OpenAICompatibleAgentLlmClient(
-            baseUrl = "https://wzw.pp.ua/v1",
-            apiKey = "", // 运行时会从配置加载
-            defaultModel = "deepseek-ai/deepseek-v4-flash"
-        )
-        pipelineService = PdfPipelineService(applicationContext, db.examQuestionDao(), llmClient)
+        pipelineService = MemCoachApplication.instance.pipelineService
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -67,8 +63,10 @@ class PdfParsingForegroundService : Service() {
         val subject = intent.getStringExtra("subject") ?: "unknown"
         val year = intent.getIntExtra("year", 0)
         val jobId = intent.getStringExtra("job_id") ?: "job_${System.currentTimeMillis()}"
+        val sourceDocumentId = intent.getStringExtra("source_document_id")
 
         val notification = createNotification("正在准备解析...")
+
         startForeground(NOTIFICATION_ID, notification)
 
         serviceScope.launch {
@@ -78,7 +76,9 @@ class PdfParsingForegroundService : Service() {
                     subject = subject,
                     year = year,
                     jobId = jobId,
+                    sourceDocumentId = sourceDocumentId,
                     callback = object : PdfPipelineService.ProgressCallback {
+
                         override fun onStepChange(step: String) {}
                         override fun onProgress(progress: Int) {
                             updateNotification("正在解析真题：$progress%")
@@ -87,7 +87,7 @@ class PdfParsingForegroundService : Service() {
                             updateNotification(message)
                         }
                         override fun onError(error: String) {
-                            stopForeground(true)
+                            stopForeground(STOP_FOREGROUND_REMOVE)
                             stopSelf()
                         }
                     }
@@ -95,7 +95,7 @@ class PdfParsingForegroundService : Service() {
             } catch (e: Exception) {
                 // 处理异常
             } finally {
-                stopForeground(true)
+                stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
         }
@@ -138,7 +138,14 @@ class PdfParsingForegroundService : Service() {
             .build()
     }
 
+    private var lastNotificationTime = 0L
+
     private fun updateNotification(content: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastNotificationTime < 500L && !content.contains("100%")) {
+            return // 500ms 内不重复更新，除非是完成状态
+        }
+        lastNotificationTime = now
         val manager = getSystemService(NotificationManager::class.java)
         manager.notify(NOTIFICATION_ID, createNotification(content))
     }
