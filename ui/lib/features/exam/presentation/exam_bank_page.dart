@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import '../../../core/native/mem_coach_native_bridge.dart';
 import '../../../core/widgets/markdown_math.dart';
 import '../../../core/state/page_context_manager.dart';
+import '../../../core/widgets/ai_sparkle_logo.dart';
 import '../../coach/widgets/coach_shell_card.dart';
+import '../../coach/widgets/chat_sheet.dart';
 
 /// 真题库页面
 class ExamBankPage extends StatefulWidget {
@@ -961,6 +963,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
           const SizedBox(width: 8),
         ],
       ),
+      floatingActionButton: _buildFloatingAiButton(),
       body: FutureBuilder<Map<String, dynamic>>(
         future: _questionFuture,
         builder: (context, snapshot) {
