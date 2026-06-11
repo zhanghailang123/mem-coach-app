@@ -18,6 +18,8 @@ class MemCoachApp extends StatelessWidget {
       title: 'MEM Coach',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: ThemeMode.system,
       home: const AppShellPage(),
       // 全局注入 AI Agent 悬浮按钮，覆盖所有路由
       builder: (context, child) {
