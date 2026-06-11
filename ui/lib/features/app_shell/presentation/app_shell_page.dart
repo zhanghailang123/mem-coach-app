@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
+import '../../../core/widgets/ai_sparkle_logo.dart';
 import '../../coach/presentation/coach_home_page.dart';
 import '../../coach/widgets/chat_sheet.dart';
 import '../../exam/presentation/exam_bank_page.dart';
@@ -157,18 +158,28 @@ class _AppShellPageState extends State<AppShellPage> {
               end: Alignment.bottomRight,
             ),
             shape: BoxShape.circle,
+            border: Border.all(
+              color: Colors.white.withOpacity(0.25),
+              width: 1.5,
+            ),
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF5B5FEF).withOpacity(0.35),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
+              BoxShadow(
+                color: const Color(0xFF20B486).withOpacity(0.15),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
             ],
           ),
-          child: const Icon(
-            Icons.auto_awesome_rounded,
-            color: Colors.white,
-            size: 20,
+          child: const Center(
+            child: AiSparkleLogo(
+              size: 20,
+              color: Colors.white,
+            ),
           ),
         ),
       ),

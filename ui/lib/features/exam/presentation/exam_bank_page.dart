@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import '../../../core/native/mem_coach_native_bridge.dart';
+import '../../../core/widgets/markdown_math.dart';
 import '../../coach/widgets/coach_shell_card.dart';
 
 /// 真题库页面
@@ -12,7 +13,8 @@ class ExamBankPage extends StatefulWidget {
   State<ExamBankPage> createState() => _ExamBankPageState();
 }
 
-class _ExamBankPageState extends State<ExamBankPage> with SingleTickerProviderStateMixin {
+class _ExamBankPageState extends State<ExamBankPage>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String _selectedSubject = 'logic';
   int? _selectedYear;
@@ -157,12 +159,14 @@ class _ExamBankPageState extends State<ExamBankPage> with SingleTickerProviderSt
                       const SizedBox(height: 4),
                       Text(
                         _getQuestionCount(_selectedSubject),
-                        style: const TextStyle(fontSize: 13, color: Colors.black38),
+                        style: const TextStyle(
+                            fontSize: 13, color: Colors.black38),
                       ),
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right_rounded, color: primaryColor.withOpacity(0.5)),
+                Icon(Icons.chevron_right_rounded,
+                    color: primaryColor.withOpacity(0.5)),
               ],
             ),
           ),
@@ -173,16 +177,21 @@ class _ExamBankPageState extends State<ExamBankPage> with SingleTickerProviderSt
 
   String _getQuestionCount(String subject) {
     switch (subject) {
-      case 'math': return '25 道数学题';
-      case 'logic': return '30 道逻辑题';
-      case 'writing': return '2 道写作题';
-      default: return '';
+      case 'math':
+        return '25 道数学题';
+      case 'logic':
+        return '30 道逻辑题';
+      case 'writing':
+        return '2 道写作题';
+      default:
+        return '';
     }
   }
 
   Widget _buildWrongBookView() {
     return FutureBuilder<Map<String, dynamic>>(
-      future: MemCoachNativeBridge.callAgentTool('wrong_book_list', {'limit': 50}),
+      future:
+          MemCoachNativeBridge.callAgentTool('wrong_book_list', {'limit': 50}),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
@@ -227,7 +236,8 @@ class _ExamBankPageState extends State<ExamBankPage> with SingleTickerProviderSt
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
                         color: const Color(0xFFEF476F).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
@@ -296,7 +306,8 @@ class QuestionListPage extends StatelessWidget {
   final int year;
   final String subject;
 
-  const QuestionListPage({super.key, required this.year, required this.subject});
+  const QuestionListPage(
+      {super.key, required this.year, required this.subject});
 
   @override
   Widget build(BuildContext context) {
@@ -348,7 +359,8 @@ class QuestionListPage extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => QuestionDetailPage(questionId: q['id']),
+                          builder: (_) =>
+                              QuestionDetailPage(questionId: q['id']),
                         ),
                       );
                     },
@@ -389,7 +401,8 @@ class QuestionListPage extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Icon(Icons.chevron_right_rounded, color: primaryColor.withOpacity(0.5)),
+                          Icon(Icons.chevron_right_rounded,
+                              color: primaryColor.withOpacity(0.5)),
                         ],
                       ),
                     ),
@@ -410,17 +423,22 @@ class QuestionListPage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.info_outline_rounded, size: 34, color: Colors.black38),
+            const Icon(Icons.info_outline_rounded,
+                size: 34, color: Colors.black38),
             const SizedBox(height: 12),
             Text(
               title,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black87),
+              style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.black87),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               message,
-              style: const TextStyle(fontSize: 13.5, height: 1.5, color: Colors.black45),
+              style: const TextStyle(
+                  fontSize: 13.5, height: 1.5, color: Colors.black45),
               textAlign: TextAlign.center,
             ),
           ],
@@ -431,10 +449,14 @@ class QuestionListPage extends StatelessWidget {
 
   String _subjectName(String subject) {
     switch (subject) {
-      case 'math': return '数学';
-      case 'logic': return '逻辑';
-      case 'writing': return '写作';
-      default: return '';
+      case 'math':
+        return '数学';
+      case 'logic':
+        return '逻辑';
+      case 'writing':
+        return '写作';
+      default:
+        return '';
     }
   }
 }
@@ -453,6 +475,16 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
   String? _selectedAnswer;
   bool _showAnswer = false;
   bool _submitting = false;
+  late final Future<Map<String, dynamic>> _questionFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _questionFuture =
+        MemCoachNativeBridge.callAgentTool('exam_question_explain', {
+      'question_id': widget.questionId,
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -461,9 +493,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
         title: const Text('题目详情'),
       ),
       body: FutureBuilder<Map<String, dynamic>>(
-        future: MemCoachNativeBridge.callAgentTool('exam_question_explain', {
-          'question_id': widget.questionId,
-        }),
+        future: _questionFuture,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return _messageState('加载题目失败', snapshot.error.toString());
@@ -478,146 +508,80 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
             return _messageState('加载题目失败', q['error'].toString());
           }
 
-          final correctAnswer = q['answer']?.toString();
+          final options = _parseOptions(q['options']);
+          final correctAnswer = _normalizeAnswer(q['answer']);
+          final isEssay = _isEssayQuestion(q);
+          final isChoice = options.isNotEmpty && !isEssay;
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 40),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _buildInfoCard(q),
+                const SizedBox(height: 14),
                 CoachShellCard(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 题干
-                      Text(
-                        q['stem'] ?? '',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          height: 1.6,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black87,
-                        ),
+                      _sectionTitle(
+                        icon: Icons.article_outlined,
+                        title: '题干',
+                        trailing: _typeName(q['type']?.toString()),
                       ),
-                      const SizedBox(height: 20),
-
-                      // 选项列表
-                      if (q['options'] != null)
-                        ..._buildOptions(q['options'], correctAnswer),
+                      const SizedBox(height: 12),
+                      MarkdownMathView(
+                        data: q['stem']?.toString() ?? '',
+                        baseFontSize: 16,
+                        mathColor: Theme.of(context).colorScheme.primary,
+                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
-
-                // 提交按钮
-                if (!_showAnswer)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      onPressed: _selectedAnswer == null || _submitting
-                          ? null
-                          : () => _submitAnswer(q),
-                      child: _submitting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text('提交答案', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-
-                // 答题结果与解析
-                if (_showAnswer) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: _selectedAnswer == correctAnswer
-                          ? const Color(0xFF20B486).withOpacity(0.08)
-                          : const Color(0xFFEF476F).withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: _selectedAnswer == correctAnswer
-                            ? const Color(0xFF20B486).withOpacity(0.2)
-                            : const Color(0xFFEF476F).withOpacity(0.2),
-                      ),
-                    ),
+                if (isChoice) ...[
+                  const SizedBox(height: 14),
+                  CoachShellCard(
+                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Icon(
-                              _selectedAnswer == correctAnswer
-                                  ? Icons.check_circle_rounded
-                                  : Icons.cancel_rounded,
-                              color: _selectedAnswer == correctAnswer
-                                  ? const Color(0xFF20B486)
-                                  : const Color(0xFFEF476F),
-                              size: 24,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _selectedAnswer == correctAnswer ? '回答正确' : '回答错误',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                color: _selectedAnswer == correctAnswer
-                                    ? const Color(0xFF20B486)
-                                    : const Color(0xFFEF476F),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          '正确答案：$correctAnswer',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        if (_selectedAnswer != correctAnswer) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            '您的选择：$_selectedAnswer',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.black54,
-                            ),
-                          ),
-                        ],
+                        _sectionTitle(
+                            icon: Icons.checklist_rounded, title: '请选择答案'),
+                        const SizedBox(height: 14),
+                        ..._buildOptions(options, correctAnswer),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  const Row(
-                    children: [
-                      Icon(Icons.menu_book_rounded, color: Colors.black54, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        '题目解析',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black87),
-                      ),
-                    ],
+                ],
+                const SizedBox(height: 18),
+                if (!_showAnswer) _buildActionButtons(q, isChoice),
+                if (_showAnswer) ...[
+                  _buildFeedbackBanner(
+                    correctAnswer: correctAnswer,
+                    isChoice: isChoice,
+                    isEssay: isEssay,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   CoachShellCard(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-                    child: Text(
-                      q['explanation'] ?? '暂无解析',
-                      style: const TextStyle(fontSize: 14.5, height: 1.6, color: Colors.black87),
+                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _sectionTitle(
+                          icon: Icons.menu_book_rounded,
+                          title: isEssay ? '参考解析' : '题目解析',
+                          trailing: correctAnswer == null
+                              ? null
+                              : '答案：$correctAnswer',
+                        ),
+                        const SizedBox(height: 12),
+                        MarkdownMathView(
+                          data: q['explanation']?.toString() ?? '暂无解析',
+                          baseFontSize: 15,
+                          mathColor: Theme.of(context).colorScheme.primary,
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -629,30 +593,278 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
     );
   }
 
-  List<Widget> _buildOptions(dynamic options, String? correctAnswer) {
-    Map<String, dynamic> optionsMap = {};
+  Widget _buildInfoCard(Map<String, dynamic> q) {
+    final year = q['year']?.toString();
+    final section = _sectionName(q['section']?.toString());
+    final questionNumber = q['question_number']?.toString();
+    final topic = q['topic']?.toString();
+    final difficulty = _difficultyName(q['difficulty']?.toString());
 
-    if (options is String) {
-      final raw = options.trim();
-      if (raw.isEmpty) return const [];
+    return CoachShellCard(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color:
+                      Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.school_rounded,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  [
+                    if (year != null && year != 'null') '$year 年',
+                    if (section.isNotEmpty) section,
+                    if (questionNumber != null && questionNumber != 'null')
+                      '第 $questionNumber 题',
+                  ].join(' · '),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (topic != null && topic.isNotEmpty && topic != 'null')
+                _metaPill(topic),
+              if (difficulty.isNotEmpty) _metaPill(difficulty),
+              _metaPill(widget.questionId),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
-      try {
-        final decoded = jsonDecode(raw);
-        if (decoded is! Map) return const [];
-        optionsMap = Map<String, dynamic>.from(decoded);
-      } catch (_) {
-        optionsMap = Map<String, dynamic>.from(Uri.splitQueryString(raw));
-      }
-    } else if (options is Map) {
-      optionsMap = Map<String, dynamic>.from(options);
-    } else {
-      return const [];
+  Widget _metaPill(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F6FA),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.black.withOpacity(0.04)),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+            fontSize: 12, fontWeight: FontWeight.w800, color: Colors.black54),
+      ),
+    );
+  }
+
+  Widget _sectionTitle({
+    required IconData icon,
+    required String title,
+    String? trailing,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Icon(icon, color: Colors.black54, size: 20),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(
+              fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black87),
+        ),
+        if (trailing != null && trailing.isNotEmpty) ...[
+          const SizedBox(width: 10),
+          Flexible(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color:
+                      Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Text(
+                  trailing,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildActionButtons(Map<String, dynamic> q, bool isChoice) {
+    if (!isChoice) {
+      return SizedBox(
+        width: double.infinity,
+        height: 50,
+        child: FilledButton.icon(
+          style: FilledButton.styleFrom(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+          onPressed: () => setState(() => _showAnswer = true),
+          icon: const Icon(Icons.visibility_rounded),
+          label: const Text('查看答案与解析',
+              style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold)),
+        ),
+      );
     }
 
-    return optionsMap.entries.map((e) {
+    return Row(
+      children: [
+        Expanded(
+          child: SizedBox(
+            height: 50,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+              ),
+              onPressed:
+                  _submitting ? null : () => setState(() => _showAnswer = true),
+              icon: const Icon(Icons.visibility_rounded, size: 18),
+              label: const Text('查看答案'),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: SizedBox(
+            height: 50,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+              ),
+              onPressed: _selectedAnswer == null || _submitting
+                  ? null
+                  : () => _submitAnswer(q),
+              child: _submitting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('提交答案',
+                      style: TextStyle(
+                          fontSize: 15.5, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeedbackBanner({
+    required String? correctAnswer,
+    required bool isChoice,
+    required bool isEssay,
+  }) {
+    final answered = _selectedAnswer != null;
+    final correct = answered && _selectedAnswer == correctAnswer;
+    final color = isEssay || !isChoice
+        ? Theme.of(context).colorScheme.primary
+        : correct
+            ? const Color(0xFF20B486)
+            : answered
+                ? const Color(0xFFEF476F)
+                : const Color(0xFF4F7BFF);
+    final icon = isEssay || !isChoice
+        ? Icons.menu_book_rounded
+        : correct
+            ? Icons.check_circle_rounded
+            : answered
+                ? Icons.cancel_rounded
+                : Icons.visibility_rounded;
+    final title = isEssay
+        ? '主观题请结合参考解析自评'
+        : !isChoice
+            ? '已显示参考答案'
+            : !answered
+                ? '已直接查看答案'
+                : correct
+                    ? '回答正确'
+                    : '回答错误';
+    final detail = isChoice
+        ? [
+            if (correctAnswer != null) '正确答案：$correctAnswer',
+            if (answered && !correct) '你的选择：$_selectedAnswer',
+          ].join(' · ')
+        : (correctAnswer == null ? '请阅读下方解析' : '参考答案：$correctAnswer');
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.22)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w900, color: color),
+                ),
+                if (detail.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    detail,
+                    style: const TextStyle(
+                        fontSize: 13.5, height: 1.45, color: Colors.black54),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildOptions(
+      Map<String, String> optionsMap, String? correctAnswer) {
+    final entries = optionsMap.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+
+    return entries.map((e) {
       final active = _selectedAnswer == e.key;
       final isCorrectAnswer = _showAnswer && e.key == correctAnswer;
-      final isWrongSelection = _showAnswer && active && _selectedAnswer != correctAnswer;
+      final isWrongSelection =
+          _showAnswer && active && _selectedAnswer != correctAnswer;
 
       Color bgColor;
       Color borderColor;
@@ -668,8 +880,11 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
           borderColor = Colors.transparent;
         }
       } else {
-        bgColor = active ? Theme.of(context).colorScheme.primary.withOpacity(0.08) : Colors.grey.shade50;
-        borderColor = active ? Theme.of(context).colorScheme.primary : Colors.transparent;
+        bgColor = active
+            ? Theme.of(context).colorScheme.primary.withOpacity(0.08)
+            : Colors.grey.shade50;
+        borderColor =
+            active ? Theme.of(context).colorScheme.primary : Colors.transparent;
       }
 
       return Padding(
@@ -683,9 +898,12 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
             child: InkWell(
-              onTap: _showAnswer ? null : () => setState(() => _selectedAnswer = e.key),
+              onTap: _showAnswer
+                  ? null
+                  : () => setState(() => _selectedAnswer = e.key),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 child: Row(
                   children: [
                     Container(
@@ -711,19 +929,25 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        e.value ?? '',
+                      child: DefaultTextStyle.merge(
                         style: TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: active ? FontWeight.bold : FontWeight.normal,
-                          color: Colors.black87,
+                          fontWeight:
+                              active ? FontWeight.w800 : FontWeight.w500,
+                        ),
+                        child: MarkdownMathView(
+                          data: e.value,
+                          selectable: false,
+                          baseFontSize: 14.5,
+                          mathColor: Theme.of(context).colorScheme.primary,
                         ),
                       ),
                     ),
                     if (_showAnswer && isCorrectAnswer)
-                      const Icon(Icons.check_circle_rounded, color: Color(0xFF20B486), size: 22),
+                      const Icon(Icons.check_circle_rounded,
+                          color: Color(0xFF20B486), size: 22),
                     if (isWrongSelection)
-                      const Icon(Icons.cancel_rounded, color: Color(0xFFEF476F), size: 22),
+                      const Icon(Icons.cancel_rounded,
+                          color: Color(0xFFEF476F), size: 22),
                   ],
                 ),
               ),
@@ -734,6 +958,30 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
     }).toList();
   }
 
+  Map<String, String> _parseOptions(dynamic options) {
+    Map<String, dynamic> optionsMap = {};
+
+    if (options is String) {
+      final raw = options.trim();
+      if (raw.isEmpty) return const {};
+
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is! Map) return const {};
+        optionsMap = Map<String, dynamic>.from(decoded);
+      } catch (_) {
+        optionsMap = Map<String, dynamic>.from(Uri.splitQueryString(raw));
+      }
+    } else if (options is Map) {
+      optionsMap = Map<String, dynamic>.from(options);
+    } else {
+      return const {};
+    }
+
+    return optionsMap
+        .map((key, value) => MapEntry(key.toString(), value?.toString() ?? ''));
+  }
+
   Widget _messageState(String title, String message) {
     return Center(
       child: Padding(
@@ -741,17 +989,22 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.info_outline_rounded, size: 34, color: Colors.black38),
+            const Icon(Icons.info_outline_rounded,
+                size: 34, color: Colors.black38),
             const SizedBox(height: 12),
             Text(
               title,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black87),
+              style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.black87),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               message,
-              style: const TextStyle(fontSize: 13.5, height: 1.5, color: Colors.black45),
+              style: const TextStyle(
+                  fontSize: 13.5, height: 1.5, color: Colors.black45),
               textAlign: TextAlign.center,
             ),
           ],
@@ -760,8 +1013,64 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
     );
   }
 
+  bool _isEssayQuestion(Map<String, dynamic> question) {
+    final type = question['type']?.toString();
+    final section = question['section']?.toString();
+    return type == 'essay' || section == 'writing';
+  }
+
+  String? _normalizeAnswer(dynamic answer) {
+    final text = answer?.toString().trim();
+    if (text == null || text.isEmpty || text == 'null') return null;
+    return text.toUpperCase();
+  }
+
+  String _sectionName(String? section) {
+    switch (section) {
+      case 'math':
+        return '数学';
+      case 'logic':
+        return '逻辑';
+      case 'writing':
+        return '写作';
+      case 'english':
+        return '英语';
+      default:
+        return section ?? '';
+    }
+  }
+
+  String _typeName(String? type) {
+    switch (type) {
+      case 'choice':
+        return '选择题';
+      case 'condition_sufficiency':
+        return '条件充分性判断';
+      case 'essay':
+        return '写作题';
+      case 'analysis':
+        return '论证分析';
+      default:
+        return type ?? '';
+    }
+  }
+
+  String _difficultyName(String? difficulty) {
+    switch (difficulty) {
+      case 'basic':
+        return '基础';
+      case 'medium':
+        return '中等';
+      case 'hard':
+        return '较难';
+      default:
+        return difficulty ?? '';
+    }
+  }
+
   Future<void> _submitAnswer(Map<String, dynamic> question) async {
-    final isCorrect = _selectedAnswer == question['answer'];
+    final correctAnswer = _normalizeAnswer(question['answer']);
+    final isCorrect = _selectedAnswer == correctAnswer;
     setState(() => _submitting = true);
 
     try {
@@ -769,21 +1078,21 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
       await MemCoachNativeBridge.callAgentTool('answer_submit', {
         'question_id': widget.questionId,
         'user_answer': _selectedAnswer,
-        'correct_answer': question['answer'],
+        'correct_answer': correctAnswer,
         'is_correct': isCorrect,
       });
 
+      if (!mounted) return;
       setState(() {
         _showAnswer = true;
         _submitting = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _submitting = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('提交失败: $e'), backgroundColor: Colors.red),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('提交失败: $e'), backgroundColor: Colors.red),
+      );
     }
   }
 }

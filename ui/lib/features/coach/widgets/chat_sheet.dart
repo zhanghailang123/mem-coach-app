@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/widgets/ai_sparkle_logo.dart';
 import '../../../core/native/mem_coach_native_bridge.dart';
 import 'markdown_bubble.dart';
 import 'tool_activity_bar.dart';
@@ -1457,10 +1458,9 @@ class _ChatSheetState extends State<ChatSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.auto_awesome_rounded,
+          AiSparkleLogo(
             size: 48,
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.35),
           ),
           const SizedBox(height: 16),
           Text(

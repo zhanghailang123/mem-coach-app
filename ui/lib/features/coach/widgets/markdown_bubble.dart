@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
-import 'package:markdown/markdown.dart' as md;
+
+import '../../../core/widgets/markdown_math.dart';
 
 /// Markdown 渲染气泡组件
 /// 支持富文本、代码块、列表等 Markdown 语法
@@ -153,114 +152,20 @@ class MarkdownBubble extends StatelessWidget {
       );
     }
 
-    // 预处理内容，增加 math 标签支持（将 $$...$$ 包装在 <math> 标签中）
-    // 注意：这是为了配合 _MathBuilder 工作的 hack
-    String processedContent = content;
-    // 先处理块级公式
-    processedContent = processedContent.replaceAllMapped(
-      RegExp(r'\$\$(.*?)\$\$', dotAll: true),
-      (match) => '<math>${match.group(0)}</math>',
-    );
-    // 再处理行内公式（排除掉已经处理过的块级标记）
-    processedContent = processedContent.replaceAllMapped(
-      RegExp(r'(?<!\$)\$(?!\$)(.*?)\$'),
-      (match) => '<math>${match.group(0)}</math>',
-    );
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: MarkdownBody(
-        data: processedContent,
-        selectable: true,
-        extensionSet: md.ExtensionSet.gitHubFlavored,
-        inlineSyntaxes: [
-          _MathTagSyntax(),
-        ],
-        builders: {
-          'math': _MathBuilder(),
-        },
-        styleSheet: MarkdownStyleSheet(
-          // 段落
-          p: const TextStyle(
-            color: Colors.black87,
-            fontSize: 15,
-            height: 1.55,
-          ),
-          // 标题
-          h1: const TextStyle(
-            color: Colors.black87,
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            height: 1.4,
-          ),
-          h2: const TextStyle(
-            color: Colors.black87,
-            fontSize: 19,
-            fontWeight: FontWeight.w700,
-            height: 1.4,
-          ),
-          h3: const TextStyle(
-            color: Colors.black87,
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            height: 1.4,
-          ),
-          // 代码块
-          code: TextStyle(
-            color: Colors.red.shade700,
-            fontSize: 13.5,
-            fontFamily: 'monospace',
-            backgroundColor: Colors.grey.withOpacity(0.1),
-          ),
-          codeblockDecoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          codeblockPadding: const EdgeInsets.all(14),
-          // 列表
-          listBullet: const TextStyle(
-            color: Colors.black87,
-            fontSize: 15,
-          ),
-          // 引用块
-          blockquote: const TextStyle(
-            color: Colors.black54,
-            fontSize: 15,
-            fontStyle: FontStyle.italic,
-          ),
-          blockquoteDecoration: BoxDecoration(
-            border: Border(
-              left: BorderSide(
-                color: Colors.grey.withOpacity(0.4),
-                width: 3,
-              ),
-            ),
-          ),
-          blockquotePadding: const EdgeInsets.only(left: 14, top: 8, bottom: 8),
-          // 链接
-          a: TextStyle(
-            color: Theme.of(context).colorScheme.primary,
-            decoration: TextDecoration.underline,
-          ),
-          // 水平线
-          horizontalRuleDecoration: BoxDecoration(
-            border: Border(
-              top: BorderSide(
-                color: Colors.grey.withOpacity(0.2),
-                width: 1,
-              ),
-            ),
-          ),
-        ),
+      child: MarkdownMathView(
+        data: content,
+        baseFontSize: 15,
+        mathColor: Theme.of(context).colorScheme.primary,
       ),
     );
-
   }
 
   /// 显示消息操作菜单（长按触发）
   void _showMessageMenu(BuildContext context, bool isUser) {
     final content = message.content as String;
-    
+
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -308,8 +213,9 @@ class MarkdownBubble extends StatelessWidget {
   String _formatTimestamp(DateTime timestamp) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final messageDate = DateTime(timestamp.year, timestamp.month, timestamp.day);
-    
+    final messageDate =
+        DateTime(timestamp.year, timestamp.month, timestamp.day);
+
     if (messageDate == today) {
       // 今天：显示 HH:mm
       return '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
@@ -319,73 +225,6 @@ class MarkdownBubble extends StatelessWidget {
     } else {
       // 更早：显示 MM-dd HH:mm
       return '${timestamp.month.toString().padLeft(2, '0')}-${timestamp.day.toString().padLeft(2, '0')} ${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
-    }
-  }
-}
-
-/// LaTeX 标签语法解析器
-class _MathTagSyntax extends md.InlineSyntax {
-  _MathTagSyntax() : super(r'<math>(.*?)</math>');
-
-  @override
-  bool onMatch(md.InlineParser parser, Match match) {
-    final formula = match.group(1);
-    if (formula != null) {
-      final element = md.Element.text('math', formula);
-      parser.addNode(element);
-    }
-    return true;
-  }
-}
-
-/// LaTeX 数学公式构建器
-///
-/// 支持行内公式 ($...$) 和块级公式 ($$...$$)
-class _MathBuilder extends MarkdownElementBuilder {
-  @override
-  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
-    final String? formula = element.textContent;
-    if (formula == null || formula.isEmpty) {
-      return null;
-    }
-
-    // 检查是否是块级公式（以 $$ 开头和结尾）
-    final isBlock = formula.startsWith('\$\$') && formula.endsWith('\$\$');
-    final cleanFormula = isBlock
-        ? formula.substring(2, formula.length - 2).trim()
-        : formula.trim();
-
-    if (cleanFormula.isEmpty) {
-      return null;
-    }
-
-    try {
-      return Math.tex(
-        cleanFormula,
-        textStyle: preferredStyle?.copyWith(
-          color: Colors.black87,
-          fontSize: isBlock ? 16 : 14,
-        ),
-        mathStyle: isBlock ? MathStyle.display : MathStyle.text,
-        onErrorFallback: (error) {
-          return Text(
-            formula,
-            style: preferredStyle?.copyWith(
-              color: Colors.red.shade700,
-              fontStyle: FontStyle.italic,
-            ),
-          );
-        },
-      );
-    } catch (e) {
-      // 如果公式解析失败，返回原始文本
-      return Text(
-        formula,
-        style: preferredStyle?.copyWith(
-          color: Colors.red.shade700,
-          fontStyle: FontStyle.italic,
-        ),
-      );
     }
   }
 }
