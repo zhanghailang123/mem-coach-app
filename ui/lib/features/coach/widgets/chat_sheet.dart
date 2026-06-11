@@ -1325,15 +1325,6 @@ class _ChatSheetState extends State<ChatSheet> {
             child: Row(
               children: [
                 IconButton(
-                  tooltip: '引用 PDF',
-                  onPressed: _running ? null : _showPdfPicker,
-                  icon: const Icon(Icons.picture_as_pdf_rounded),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.grey.withOpacity(0.1),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
                   tooltip: '快捷命令',
                   onPressed: _running ? null : _showQuickCommandSheet,
                   icon: const Icon(Icons.bolt_rounded),

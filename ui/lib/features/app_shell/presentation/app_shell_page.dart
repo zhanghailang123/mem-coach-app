@@ -1,7 +1,10 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
+import '../../../core/widgets/ai_sparkle_logo.dart';
+import '../../../core/state/page_context_manager.dart';
 import '../../coach/presentation/coach_home_page.dart';
+import '../../coach/widgets/chat_sheet.dart';
 import '../../exam/presentation/exam_bank_page.dart';
 import '../../insight/presentation/insight_page.dart';
 import '../../vocabulary/presentation/vocabulary_page.dart';
@@ -130,7 +133,55 @@ class _AppShellPageState extends State<AppShellPage> {
               ),
             ),
           ),
+          // 悬浮在 Dock 栏上方的AI导师圆钮
+          _buildFloatingCenterAiButton(bottomPadding),
         ],
+      ),
+    );
+  }
+
+  // 专属跨界悬浮 AI 导师圆钮
+  Widget _buildFloatingCenterAiButton(double bottomPadding) {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 34 + bottomPadding,
+      child: Center(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            final pageContext = PageContextManager().currentContext;
+            ChatSheet.show(context, pageContext: pageContext);
+          },
+          child: Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF5B5FEF), Color(0xFF20B486)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2.0),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF5B5FEF).withOpacity(0.4),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: const Color(0xFF20B486).withOpacity(0.15),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Center(
+              child: AiSparkleLogo(size: 24, color: Colors.white),
+            ),
+          ),
+        ),
       ),
     );
   }
