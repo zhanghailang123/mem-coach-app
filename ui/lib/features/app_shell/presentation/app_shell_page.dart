@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../coach/presentation/coach_home_page.dart';
+import '../../coach/widgets/chat_sheet.dart';
 import '../../exam/presentation/exam_bank_page.dart';
 import '../../insight/presentation/insight_page.dart';
 import '../../knowledge/presentation/knowledge_page.dart';
@@ -22,7 +23,6 @@ class _AppShellPageState extends State<AppShellPage> {
     ExamBankPage(),
     VocabularyPage(),
     InsightPage(),
-    KnowledgePage(),
   ];
 
   @override
@@ -71,8 +71,7 @@ class _AppShellPageState extends State<AppShellPage> {
                         alignment: Alignment(
                           _currentIndex == 0 ? -1.0 :
                           (_currentIndex == 1 ? -0.5 :
-                          (_currentIndex == 2 ? 0.0 :
-                          (_currentIndex == 3 ? 0.5 : 1.0))),
+                          (_currentIndex == 2 ? 0.5 : 1.0)),
                           0.0,
                         ),
                         child: FractionallySizedBox(
@@ -94,9 +93,9 @@ class _AppShellPageState extends State<AppShellPage> {
                           Expanded(
                             child: _buildTabItem(
                               index: 0,
-                              icon: Icons.psychology_alt_outlined,
-                              selectedIcon: Icons.psychology_alt_rounded,
-                              label: 'AI 教练',
+                              icon: Icons.home_outlined,
+                              selectedIcon: Icons.home_rounded,
+                              label: '首页',
                             ),
                           ),
                           Expanded(
@@ -106,6 +105,9 @@ class _AppShellPageState extends State<AppShellPage> {
                               selectedIcon: Icons.school_rounded,
                               label: '真题',
                             ),
+                          ),
+                          Expanded(
+                            child: _buildCenterAiButton(),
                           ),
                           Expanded(
                             child: _buildTabItem(
@@ -123,14 +125,6 @@ class _AppShellPageState extends State<AppShellPage> {
                               label: '学情',
                             ),
                           ),
-                          Expanded(
-                            child: _buildTabItem(
-                              index: 4,
-                              icon: Icons.menu_book_outlined,
-                              selectedIcon: Icons.menu_book_rounded,
-                              label: '知识',
-                            ),
-                          ),
                         ],
                       ),
                     ],
@@ -140,6 +134,43 @@ class _AppShellPageState extends State<AppShellPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // 专属悬浮 AI 导师圆钮
+  Widget _buildCenterAiButton() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        // 直接拉起 AI 导师对话框，不切换当前 Tab 页面
+        ChatSheet.show(context);
+      },
+      child: Center(
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF5B5FEF), Color(0xFF20B486)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF5B5FEF).withOpacity(0.35),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.auto_awesome_rounded,
+            color: Colors.white,
+            size: 20,
+          ),
+        ),
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/native/mem_coach_native_bridge.dart';
 import '../../coach/presentation/practice_page.dart';
+import '../../knowledge/presentation/knowledge_page.dart';
 
 class InsightPage extends StatefulWidget {
   const InsightPage({super.key});
@@ -51,6 +52,8 @@ class _InsightPageState extends State<InsightPage> {
               const _SubjectRadarMock(),
               const SizedBox(height: 16),
               _WeakPointList(weakPoints: weakPoints),
+              const SizedBox(height: 16),
+              const _KnowledgeGraphCard(),
               const SizedBox(height: 16),
               _HeatmapCard(
                 dailyStats: dailyStats,
@@ -281,3 +284,37 @@ class _InsightCard extends StatelessWidget {
     );
   }
 }
+
+// 备考知识图谱入口卡片
+class _KnowledgeGraphCard extends StatelessWidget {
+  const _KnowledgeGraphCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return _InsightCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('备考知识图谱', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 6),
+          const Text('精细化追踪数学、逻辑、写作与英语考点关联脉络。', style: TextStyle(color: Colors.black54, fontSize: 13, height: 1.4)),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const KnowledgePage()),
+                );
+              },
+              icon: const Icon(Icons.hub_outlined, size: 18),
+              label: const Text('查看考点知识网'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

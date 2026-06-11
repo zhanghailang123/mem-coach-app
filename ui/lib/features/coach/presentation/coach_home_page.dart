@@ -95,7 +95,6 @@ class _CoachHomePageState extends State<CoachHomePage> {
       future: _dataFuture,
       builder: (context, snapshot) {
         final data = snapshot.data ?? const HomeData();
-        final isLoading = snapshot.connectionState == ConnectionState.waiting;
 
         return Scaffold(
           body: SafeArea(
@@ -106,25 +105,19 @@ class _CoachHomePageState extends State<CoachHomePage> {
                 slivers: [
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
                       child: _Header(data: data),
                     ),
                   ),
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                      child: _ChatHeroCard(data: data, isLoading: isLoading),
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                       child: _CoreStudyDoubleCard(data: data),
                     ),
                   ),
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 28, 20, 100),
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
                       child: _MinimalUploadEntry(),
                     ),
                   ),
@@ -150,27 +143,22 @@ class _Header extends StatelessWidget {
 
     return Row(
       children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF5B5FEF), Color(0xFF20B486)],
-            ),
-            borderRadius: BorderRadius.circular(15),
-          ),
-          child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 21),
-        ),
-        const SizedBox(width: 10),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('MEM Coach', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 1),
+              const Text(
+                'MEM Coach',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 3),
               Text(
                 [if (examText.isNotEmpty) examText, streakText].join(' · '),
-                style: const TextStyle(color: Colors.black54, fontSize: 12.5),
+                style: const TextStyle(color: Colors.black54, fontSize: 13),
               ),
             ],
           ),
@@ -225,33 +213,29 @@ class _ChatHeroCard extends StatelessWidget {
             : '告诉我你的目标，我会把真题、知识点和复习节奏串起来。';
 
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        // 深邃科技蓝渐变背景
+        // 极简现代浅色渐变背景
         gradient: const LinearGradient(
           colors: [
-            Color(0xFF131525),
-            Color(0xFF1C1F3F),
+            Colors.white,
+            Color(0xFFF7F8FC),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(32),
+        borderRadius: BorderRadius.circular(30),
+        // 极细的科技蓝微弱边框
         border: Border.all(
-          color: const Color(0xFF5B5FEF).withOpacity(0.35),
-          width: 2,
+          color: const Color(0xFFE2E6F5),
+          width: 1.5,
         ),
-        // AI 专属极光发光外投影
+        // 弥散式柔和发光阴影
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5B5FEF).withOpacity(0.4),
-            blurRadius: 36,
-            offset: const Offset(0, 16),
-          ),
-          BoxShadow(
-            color: const Color(0xFF20B486).withOpacity(0.15),
-            blurRadius: 36,
-            offset: const Offset(0, 16),
+            color: const Color(0xFF5B5FEF).withOpacity(0.06),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -261,27 +245,19 @@ class _ChatHeroCard extends StatelessWidget {
           // AI 导师身份及问候
           Row(
             children: [
-              // 巨型发光 AI 徽章
+              // 智能导师头像
               Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
                     colors: [Color(0xFF5B5FEF), Color(0xFF20B486)],
                   ),
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white24, width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF5B5FEF).withOpacity(0.6),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
                 ),
-                child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 28),
+                child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 22),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -291,27 +267,27 @@ class _ChatHeroCard extends StatelessWidget {
                         const Text(
                           'MEM AI 智能导师',
                           style: TextStyle(
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            letterSpacing: 0.3,
+                            color: Colors.black87,
+                            letterSpacing: 0.2,
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        // 呼吸式在线标签
+                        const SizedBox(width: 8),
+                        // 状态栏
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF20B486).withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFF20B486).withOpacity(0.4), width: 1),
+                            color: const Color(0xFF20B486).withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF20B486).withOpacity(0.2), width: 0.8),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Container(
-                                width: 6,
-                                height: 6,
+                                width: 5,
+                                height: 5,
                                 decoration: const BoxDecoration(
                                   color: Color(0xFF20B486),
                                   shape: BoxShape.circle,
@@ -331,51 +307,51 @@ class _ChatHeroCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 5),
                     Text(
                       briefingText,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.4),
+                      style: const TextStyle(color: Colors.black54, fontSize: 13, height: 1.45),
                     ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
 
-          // 巨型拟真对话条入口
+          // 拟真对话输入框
           GestureDetector(
             onTap: () => ChatSheet.show(context),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: const Color(0xFF5B5FEF).withOpacity(0.1),
-                  width: 1,
+                  color: const Color(0xFF5B5FEF).withOpacity(0.12),
+                  width: 1.5,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.25),
-                    blurRadius: 15,
-                    offset: const Offset(0, 8),
+                    color: const Color(0xFF5B5FEF).withOpacity(0.04),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
                   ),
                 ],
               ),
               child: Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF5B5FEF).withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(14),
+                      color: const Color(0xFF5B5FEF).withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF5B5FEF), size: 24),
+                    child: const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF5B5FEF), size: 20),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 12),
                   const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -383,23 +359,23 @@ class _ChatHeroCard extends StatelessWidget {
                         Text(
                           '即刻发起对话',
                           style: TextStyle(
-                            fontSize: 17,
+                            fontSize: 15,
                             fontWeight: FontWeight.w900,
                             color: Colors.black87,
                           ),
                         ),
-                        SizedBox(height: 3),
+                        SizedBox(height: 2),
                         Text(
                           '“今天我该复习什么？”',
-                          style: TextStyle(color: Colors.black45, fontSize: 13.5),
+                          style: TextStyle(color: Colors.black38, fontSize: 12.5),
                         ),
                       ],
                     ),
                   ),
-                  // 发光启动按钮
+                  // 发光发送图标
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: 40,
+                    height: 40,
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
                         colors: [Color(0xFF5B5FEF), Color(0xFF20B486)],
@@ -407,13 +383,13 @@ class _ChatHeroCard extends StatelessWidget {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: Color(0x505B5FEF),
-                          blurRadius: 10,
-                          offset: Offset(0, 4),
+                          color: Color(0x305B5FEF),
+                          blurRadius: 8,
+                          offset: Offset(0, 3),
                         ),
                       ],
                     ),
-                    child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 22),
+                    child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 18),
                   ),
                 ],
               ),
@@ -421,12 +397,12 @@ class _ChatHeroCard extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
-          // 引导 Prompt 提示词
+          // 引导提示词
           const Text(
             '你可以这样问我',
             style: TextStyle(
-              fontSize: 12,
-              color: Colors.white38,
+              fontSize: 11.5,
+              color: Colors.black38,
               fontWeight: FontWeight.bold,
               letterSpacing: 0.5,
             ),
@@ -458,6 +434,7 @@ class _ChatHeroCard extends StatelessWidget {
   }
 }
 
+// 自定义快捷气泡，防止 ActionChip 主题冲突导致的文字不可读 Bug
 class _PromptChip extends StatelessWidget {
   const _PromptChip({required this.label, required this.prompt});
 
@@ -466,18 +443,24 @@ class _PromptChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ActionChip(
-      label: Text(label),
-      onPressed: () => ChatSheet.show(context, initialText: prompt),
-      backgroundColor: Colors.white.withOpacity(0.08),
-      side: BorderSide(color: Colors.white.withOpacity(0.15), width: 1),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      labelStyle: TextStyle(
-        fontWeight: FontWeight.w600,
-        fontSize: 12.5,
-        color: Colors.white.withOpacity(0.9),
+    return GestureDetector(
+      onTap: () => ChatSheet.show(context, initialText: prompt),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF4F6FC),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE5E9FF), width: 1),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+            color: Colors.black87,
+          ),
+        ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
     );
   }
 }
