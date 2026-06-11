@@ -88,17 +88,10 @@ class _ToolActivityBarState extends State<ToolActivityBar>
     );
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -117,57 +110,37 @@ class _ToolActivityBarState extends State<ToolActivityBar>
   }
 
   Widget _buildHeader(ToolActivity activeActivity) {
+    final count = widget.toolActivities.length;
+    final running = widget.toolActivities.where((a) => a.status == ToolActivityStatus.running).length;
+    
     return GestureDetector(
       onTap: _toggleExpanded,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
-            // 工具类型图标
-            _buildToolIcon(activeActivity.toolName),
-            const SizedBox(width: 12),
-            // 工具信息
+            Icon(Icons.construction_rounded, size: 18, color: Colors.grey.shade600),
+            const SizedBox(width: 10),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    activeActivity.toolName,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF212121),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (activeActivity.summary != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      activeActivity.summary!,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF757575),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ],
+              child: Text(
+                _expanded ? activeActivity.toolName : '已使用 $count 个工具',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: _expanded ? FontWeight.w500 : FontWeight.normal,
+                  color: _expanded ? Color(0xFF212121) : Colors.grey.shade700,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            // 状态指示器
-            _buildStatusIndicator(activeActivity.status),
-            const SizedBox(width: 8),
-            // 展开/折叠图标
-            AnimatedRotation(
-              turns: _expanded ? 0.5 : 0.0,
-              duration: const Duration(milliseconds: 200),
-              child: const Icon(
-                Icons.keyboard_arrow_down,
-                size: 20,
-                color: Color(0xFF757575),
-              ),
+            if (running > 0) ...[
+              SizedBox(width: 8, height: 8, child: CircularProgressIndicator(strokeWidth: 1.5)),
+              const SizedBox(width: 8),
+            ],
+            Icon(
+              _expanded ? Icons.expand_less : Icons.expand_more,
+              size: 18,
+              color: Colors.grey.shade600,
             ),
           ],
         ),

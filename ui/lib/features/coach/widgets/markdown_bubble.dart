@@ -36,14 +36,21 @@ class MarkdownBubble extends StatelessWidget {
               ),
               decoration: BoxDecoration(
                 color: isUser
-                    ? Theme.of(context).colorScheme.primary
-                    : const Color(0xFFF4F6FA),
+                    ? const Color(0xFF5B5FEF)
+                    : const Color(0xFFF0F2F5),
                 borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: Radius.circular(isUser ? 18 : 4),
-                  bottomRight: Radius.circular(isUser ? 4 : 18),
+                  topLeft: const Radius.circular(20),
+                  topRight: const Radius.circular(20),
+                  bottomLeft: Radius.circular(isUser ? 20 : 6),
+                  bottomRight: Radius.circular(isUser ? 6 : 20),
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: isUser
                   ? _buildUserBubble(content, context)
