@@ -1,18 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/state/theme_provider.dart';
 import '../../skill/presentation/skill_management_page.dart';
 import 'mcp_management_page.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('设置'),
       ),
       body: ListView(
         children: [
+          const _SectionHeader(title: '外观'),
+          ListTile(
+            leading: const Icon(Icons.dark_mode_outlined),
+            title: const Text('深色模式'),
+            subtitle: Text(_themeLabel(themeMode)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showThemeSelector(context, ref, themeMode),
+          ),
+          const Divider(),
           const _SectionHeader(title: 'AI 能力'),
           ListTile(
             leading: const Icon(Icons.hub),
@@ -122,4 +135,56 @@ class _SectionHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+String _themeLabel(ThemeMode mode) {
+  switch (mode) {
+    case ThemeMode.light:
+      return '浅色';
+    case ThemeMode.dark:
+      return '深色';
+    case ThemeMode.system:
+      return '跟随系统';
+  }
+}
+
+void _showThemeSelector(BuildContext context, WidgetRef ref, ThemeMode current) {
+  showModalBottomSheet(
+    context: context,
+    builder: (context) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: Icon(Icons.brightness_auto),
+            title: Text('跟随系统'),
+            trailing: current == ThemeMode.system ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) : null,
+            onTap: () {
+              ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.system);
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.light_mode),
+            title: Text('浅色模式'),
+            trailing: current == ThemeMode.light ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) : null,
+            onTap: () {
+              ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.light);
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.dark_mode),
+            title: Text('深色模式'),
+            trailing: current == ThemeMode.dark ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) : null,
+            onTap: () {
+              ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.dark);
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
 }
