@@ -97,6 +97,8 @@ class DatabasePreloader(
                 return
             }
 
+            repairConditionSufficiencyQuestions(db, tempDb)
+
             if (existingPrebuiltCount >= assetCount) {
                 android.util.Log.i(
                     "DatabasePreloader",
@@ -205,6 +207,91 @@ class DatabasePreloader(
 
         } catch (e: Exception) {
             android.util.Log.e("DatabasePreloader", "预加载失败: ${e.message}", e)
+        }
+    }
+
+    private fun repairConditionSufficiencyQuestions(
+        db: SupportSQLiteDatabase,
+        tempDb: android.database.sqlite.SQLiteDatabase
+    ) {
+        val staleCountBefore = countStaleConditionSufficiencyQuestions(db)
+        if (staleCountBefore <= 0) return
+
+        android.util.Log.i(
+            "DatabasePreloader",
+            "检测到 $staleCountBefore 道条件充分性题缺少条件/选项，开始从预置库修复"
+        )
+
+        tempDb.rawQuery(
+            """
+            SELECT id, stem, options, explanation, updated_at
+            FROM exam_questions
+            WHERE type = 'condition_sufficiency'
+              AND id LIKE '20__-%-q%'
+              AND options IS NOT NULL
+              AND options != ''
+              AND stem LIKE '%已知条件%'
+            """.trimIndent(),
+            null
+        ).use { cursor ->
+            val updateSql = """
+                UPDATE exam_questions
+                SET stem = ?,
+                    options = ?,
+                    explanation = CASE
+                        WHEN ? IS NULL OR ? = '' THEN explanation
+                        ELSE ?
+                    END,
+                    updated_at = ?
+                WHERE id = ?
+                  AND type = 'condition_sufficiency'
+                  AND (
+                      options IS NULL
+                      OR options = ''
+                      OR stem NOT LIKE '%已知条件%'
+                  )
+            """.trimIndent()
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getStringOrNull("id") ?: continue
+                val stem = cursor.getStringOrNull("stem") ?: continue
+                val options = cursor.getStringOrNull("options") ?: continue
+                val explanation = cursor.getStringOrNull("explanation")
+                val updatedAt = cursor.getLongOrNull("updated_at") ?: System.currentTimeMillis()
+
+                db.execSQL(updateSql, arrayOf(
+                    stem,
+                    options,
+                    explanation,
+                    explanation,
+                    explanation,
+                    updatedAt,
+                    id
+                ))
+            }
+        }
+
+        val staleCountAfter = countStaleConditionSufficiencyQuestions(db)
+        android.util.Log.i(
+            "DatabasePreloader",
+            "条件充分性题修复完成：${staleCountBefore - staleCountAfter}/$staleCountBefore"
+        )
+    }
+
+    private fun countStaleConditionSufficiencyQuestions(db: SupportSQLiteDatabase): Int {
+        return db.query(
+            """
+            SELECT COUNT(*)
+            FROM exam_questions
+            WHERE type = 'condition_sufficiency'
+              AND (
+                  options IS NULL
+                  OR options = ''
+                  OR stem NOT LIKE '%已知条件%'
+              )
+            """.trimIndent()
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getInt(0) else 0
         }
     }
 

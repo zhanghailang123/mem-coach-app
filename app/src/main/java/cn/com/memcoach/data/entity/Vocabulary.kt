@@ -2,12 +2,21 @@ package cn.com.memcoach.data.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
  * 单词实体
  */
-@Entity(tableName = "vocabulary")
+@Entity(
+    tableName = "vocabulary",
+    indices = [
+        Index(value = ["word"], name = "idx_vocab_word"),
+        Index(value = ["status"], name = "idx_vocab_status"),
+        Index(value = ["next_review_at"], name = "idx_vocab_next_review")
+    ]
+)
 data class Vocabulary(
     @PrimaryKey
     val id: String, // vocab-adapt
@@ -32,10 +41,10 @@ data class Vocabulary(
     @ColumnInfo(name = "explanation")
     val explanation: String, // Markdown正文
 
-    @ColumnInfo(name = "status")
+    @ColumnInfo(name = "status", defaultValue = "'new'")
     val status: String = "new", // new/learning/mastered
 
-    @ColumnInfo(name = "review_count")
+    @ColumnInfo(name = "review_count", defaultValue = "0")
     val reviewCount: Int = 0,
 
     @ColumnInfo(name = "last_review_at")
@@ -54,7 +63,17 @@ data class Vocabulary(
 /**
  * 单词复习记录
  */
-@Entity(tableName = "vocabulary_reviews")
+@Entity(
+    tableName = "vocabulary_reviews",
+    foreignKeys = [
+        ForeignKey(
+            entity = Vocabulary::class,
+            parentColumns = ["id"],
+            childColumns = ["vocab_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
 data class VocabularyReview(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
@@ -68,7 +87,7 @@ data class VocabularyReview(
     @ColumnInfo(name = "review_type")
     val reviewType: String, // recognition/spelling/usage
 
-    @ColumnInfo(name = "time_spent")
+    @ColumnInfo(name = "time_spent", defaultValue = "0")
     val timeSpent: Int = 0, // 秒
 
     @ColumnInfo(name = "created_at")

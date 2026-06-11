@@ -6,7 +6,6 @@ import '../../coach/presentation/coach_home_page.dart';
 import '../../coach/widgets/chat_sheet.dart';
 import '../../exam/presentation/exam_bank_page.dart';
 import '../../insight/presentation/insight_page.dart';
-import '../../knowledge/presentation/knowledge_page.dart';
 import '../../vocabulary/presentation/vocabulary_page.dart';
 
 class AppShellPage extends StatefulWidget {
@@ -19,6 +18,7 @@ class AppShellPage extends StatefulWidget {
 class _AppShellPageState extends State<AppShellPage> {
   int _currentIndex = 0;
 
+  // 页面列表，保留 4 个主 Tab 页面
   static const _pages = [
     CoachHomePage(),
     ExamBankPage(),
@@ -65,7 +65,7 @@ class _AppShellPageState extends State<AppShellPage> {
                   ),
                   child: Stack(
                     children: [
-                      // 弹性滑动背景滑块
+                      // 弹性滑动背景滑块，跳过正中央的 AI 圆钮位置
                       AnimatedAlign(
                         duration: const Duration(milliseconds: 300),
                         curve: Curves.easeOutBack,
@@ -107,8 +107,9 @@ class _AppShellPageState extends State<AppShellPage> {
                               label: '真题',
                             ),
                           ),
-                          Expanded(
-                            child: _buildCenterAiButton(),
+                          // 留出空间给浮动 AI 按钮
+                          const Expanded(
+                            child: SizedBox(),
                           ),
                           Expanded(
                             child: _buildTabItem(
@@ -134,51 +135,58 @@ class _AppShellPageState extends State<AppShellPage> {
               ),
             ),
           ),
+          // 悬浮在 Dock 栏上方的巨型 AI 导师圆钮
+          _buildFloatingCenterAiButton(bottomPadding),
         ],
       ),
     );
   }
 
-  // 专属悬浮 AI 导师圆钮
-  Widget _buildCenterAiButton() {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        // 直接拉起 AI 导师对话框，不切换当前 Tab 页面
-        ChatSheet.show(context);
-      },
+  // 专属跨界悬浮 AI 导师圆钮
+  Widget _buildFloatingCenterAiButton(double bottomPadding) {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 34 + bottomPadding, // 向上偏移溢出
       child: Center(
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF5B5FEF), Color(0xFF20B486)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: Colors.white.withOpacity(0.25),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF5B5FEF).withOpacity(0.35),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            // 直接拉起 AI 导师对话框
+            ChatSheet.show(context);
+          },
+          child: Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF5B5FEF), Color(0xFF20B486)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              BoxShadow(
-                color: const Color(0xFF20B486).withOpacity(0.15),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white,
+                width: 2.0, // 亮白色描边
               ),
-            ],
-          ),
-          child: const Center(
-            child: AiSparkleLogo(
-              size: 20,
-              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF5B5FEF).withOpacity(0.4),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: const Color(0xFF20B486).withOpacity(0.15),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Center(
+              child: AiSparkleLogo(
+                size: 24, // 放大星簇尺寸
+                color: Colors.white,
+              ),
             ),
           ),
         ),

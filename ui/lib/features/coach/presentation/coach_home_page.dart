@@ -103,23 +103,28 @@ class _CoachHomePageState extends State<CoachHomePage> {
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
+                  // 顶部标题栏
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
                       child: _Header(data: data),
                     ),
                   ),
+                  // 今日备考仪表盘
                   SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                      child: _CoreStudyDoubleCard(data: data),
-                    ),
+                    child: _DashboardCard(data: data),
                   ),
+                  // 今日智能任务清单
                   SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
-                      child: _MinimalUploadEntry(),
-                    ),
+                    child: _TodayTasks(data: data),
+                  ),
+                  // PDF 资料中心
+                  SliverToBoxAdapter(
+                    child: const _PdfMaterialCard(),
+                  ),
+                  // 底部备考金句
+                  const SliverToBoxAdapter(
+                    child: _DailyQuoteCard(),
                   ),
                 ],
               ),
@@ -131,6 +136,7 @@ class _CoachHomePageState extends State<CoachHomePage> {
   }
 }
 
+/// 顶部标题及操作栏
 class _Header extends StatelessWidget {
   const _Header({required this.data});
 
@@ -198,285 +204,134 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _ChatHeroCard extends StatelessWidget {
-  const _ChatHeroCard({required this.data, required this.isLoading});
+/// 仪表盘看板卡片
+class _DashboardCard extends StatelessWidget {
+  const _DashboardCard({required this.data});
 
   final HomeData data;
-  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
-    final briefingText = isLoading
-        ? '正在智能分析你的学习进度...'
-        : data.briefing.isNotEmpty
-            ? data.briefing
-            : '告诉我你的目标，我会把真题、知识点和复习节奏串起来。';
+    final double accuracy = data.todayTotal > 0 ? (data.todayCorrect / data.todayTotal) : 0.0;
+    final String accuracyText = data.todayTotal > 0 ? '${(accuracy * 100).toInt()}%' : '0%';
 
     return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        // 极简现代浅色渐变背景
+        // 极简浅色科技渐变背景
         gradient: const LinearGradient(
-          colors: [
-            Colors.white,
-            Color(0xFFF7F8FC),
-          ],
+          colors: [Colors.white, Color(0xFFF9FAFF)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(30),
-        // 极细的科技蓝微弱边框
-        border: Border.all(
-          color: const Color(0xFFE2E6F5),
-          width: 1.5,
-        ),
-        // 弥散式柔和发光阴影
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E6F5), width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5B5FEF).withOpacity(0.06),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
+            color: const Color(0xFF5B5FEF).withOpacity(0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          // AI 导师身份及问候
-          Row(
-            children: [
-              // 智能导师头像
-              Container(
-                width: 48,
-                height: 48,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF5B5FEF), Color(0xFF20B486)],
-                  ),
-                  shape: BoxShape.circle,
+          // 左侧圆形环状进度条
+          SizedBox(
+            width: 80,
+            height: 80,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CircularProgressIndicator(
+                  value: data.todayTotal > 0 ? (data.todayCorrect / data.todayTotal).clamp(0.0, 1.0) : 0.0,
+                  strokeWidth: 7.5,
+                  backgroundColor: const Color(0xFF5B5FEF).withOpacity(0.08),
+                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF5B5FEF)),
                 ),
-                child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 22),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Row(
-                      children: [
-                        const Text(
-                          'MEM AI 智能导师',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.black87,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // 状态栏
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF20B486).withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFF20B486).withOpacity(0.2), width: 0.8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 5,
-                                height: 5,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF20B486),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              const Text(
-                                '在线',
-                                style: TextStyle(
-                                  color: Color(0xFF20B486),
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
                     Text(
-                      briefingText,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.black54, fontSize: 13, height: 1.45),
+                      accuracyText,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black87),
+                    ),
+                    const Text(
+                      '今日正确率',
+                      style: TextStyle(fontSize: 8, color: Colors.black45, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-
-          // 拟真对话输入框
-          GestureDetector(
-            onTap: () => ChatSheet.show(context),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: const Color(0xFF5B5FEF).withOpacity(0.12),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF5B5FEF).withOpacity(0.04),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF5B5FEF).withOpacity(0.06),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF5B5FEF), size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '即刻发起对话',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          '“今天我该复习什么？”',
-                          style: TextStyle(color: Colors.black38, fontSize: 12.5),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // 发光发送图标
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF5B5FEF), Color(0xFF20B486)],
-                      ),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Color(0x305B5FEF),
-                          blurRadius: 8,
-                          offset: Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 18),
-                  ),
-                ],
-              ),
+              ],
             ),
           ),
-          const SizedBox(height: 24),
-
-          // 引导提示词
-          const Text(
-            '你可以这样问我',
-            style: TextStyle(
-              fontSize: 11.5,
-              color: Colors.black38,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
+          const SizedBox(width: 24),
+          // 右侧核心统计网格
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildStatItem('${data.daysUntilExam}天', '考试倒计时'),
+                _buildStatItem('${data.streak}天', '连续学习'),
+                _buildStatItem('${data.todayTotal}题', '今日刷题'),
+              ],
             ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: const [
-              _PromptChip(label: '⏱️ 我今天只有 20 分钟', prompt: '帮我安排今天 20 分钟 MEM 学习计划'),
-              _PromptChip(label: '📝 帮我复盘错题', prompt: '根据我的错题和学习记录，帮我复盘当前最需要补的知识点'),
-              _PromptChip(label: '💡 出 3 道逻辑题', prompt: '给我 3 道逻辑题练习，并在我答完后讲解思路'),
-            ],
           ),
         ],
       ),
     );
   }
 
-  // 获取时间问候语
-  String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 6) return '夜深了，先轻量复盘。';
-    if (hour < 12) return '上午好，开启一次高效学习。';
-    if (hour < 14) return '中午好，适合做 3 道微练习。';
-    if (hour < 18) return '下午好，把薄弱点补一补。';
-    if (hour < 22) return '晚上好，复习正当时。';
-    return '夜深了，先轻量复盘。';
-  }
-}
-
-// 自定义快捷气泡，防止 ActionChip 主题冲突导致的文字不可读 Bug
-class _PromptChip extends StatelessWidget {
-  const _PromptChip({required this.label, required this.prompt});
-
-  final String label;
-  final String prompt;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => ChatSheet.show(context, initialText: prompt),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF4F6FC),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE5E9FF), width: 1),
+  Widget _buildStatItem(String val, String label) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          val,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.black87),
         ),
-        child: Text(
+        const SizedBox(height: 4),
+        Text(
           label,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 12,
-            color: Colors.black87,
-          ),
+          style: const TextStyle(fontSize: 10, color: Colors.black45, fontWeight: FontWeight.w700),
         ),
-      ),
+      ],
     );
   }
 }
 
-class _CoreStudyDoubleCard extends StatelessWidget {
-  const _CoreStudyDoubleCard({required this.data});
+/// 今日学习清单板块
+class _TodayTasks extends StatelessWidget {
+  const _TodayTasks({required this.data});
 
   final HomeData data;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        // 真题挑战
-        Expanded(
-          child: GestureDetector(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '今日智能推荐清单',
+            style: TextStyle(
+              fontSize: 15.5,
+              fontWeight: FontWeight.w900,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 任务 1：真题演练
+          _buildTaskCard(
+            context,
+            icon: Icons.edit_document,
+            iconBg: const Color(0xFF5B5FEF).withOpacity(0.08),
+            iconColor: const Color(0xFF5B5FEF),
+            title: '逻辑真题演练',
+            subtitle: data.todayTotal > 0 ? '今日已练 ${data.todayTotal} 题 · 建议再完成 5 题' : '建议完成 5 题真题摸底',
+            actionText: '去练习',
             onTap: () {
               PracticePage.navigate(
                 context,
@@ -485,59 +340,17 @@ class _CoreStudyDoubleCard extends StatelessWidget {
                 count: 5,
               );
             },
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF5B5FEF), Color(0xFF8C90FF)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF5B5FEF).withOpacity(0.25),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.edit_document, color: Colors.white, size: 20),
-                      ),
-                      const Icon(Icons.arrow_forward_rounded, color: Colors.white70, size: 18),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    '真题演练',
-                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    data.todayTotal > 0 ? '今日已练 ${data.todayTotal} 题' : '开启今日刷题挑战',
-                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
           ),
-        ),
-        const SizedBox(width: 14),
-        // 记忆卡牌
-        Expanded(
-          child: GestureDetector(
+          const SizedBox(height: 12),
+          // 任务 2：闪卡复习
+          _buildTaskCard(
+            context,
+            icon: Icons.psychology_outlined,
+            iconBg: const Color(0xFFEF476F).withOpacity(0.08),
+            iconColor: const Color(0xFFEF476F),
+            title: '记忆闪卡背诵',
+            subtitle: data.dueReviewCount > 0 ? '有 ${data.dueReviewCount} 个词汇已到期需复习' : '词汇背诵已全部完成',
+            actionText: '去背诵',
             onTap: () {
               PracticePage.navigate(
                 context,
@@ -546,61 +359,158 @@ class _CoreStudyDoubleCard extends StatelessWidget {
                 count: 5,
               );
             },
-            child: Container(
-              padding: const EdgeInsets.all(16),
+          ),
+          const SizedBox(height: 12),
+          // 任务 3：写作辅导快捷指令
+          _buildTaskCard(
+            context,
+            icon: Icons.auto_awesome_outlined,
+            iconBg: const Color(0xFF20B486).withOpacity(0.08),
+            iconColor: const Color(0xFF20B486),
+            title: '管综写作辅导',
+            subtitle: '快速梳理论证有效性分析框架',
+            actionText: '唤导师',
+            onTap: () {
+              ChatSheet.show(
+                context,
+                initialText: '帮我梳理考研管综写作的论证有效性分析核心大纲与框架',
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskCard(
+    BuildContext context, {
+    required IconData icon,
+    required Color iconBg,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required String actionText,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFEF476F), Color(0xFFFF7597)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFEF476F).withOpacity(0.25),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+                color: iconBg,
+                borderRadius: BorderRadius.circular(12),
               ),
+              child: Icon(icon, color: iconColor, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.psychology, color: Colors.white, size: 20),
-                      ),
-                      const Icon(Icons.arrow_forward_rounded, color: Colors.white70, size: 18),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    '记忆闪卡',
-                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900),
+                  Text(
+                    title,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.black87),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    data.dueReviewCount > 0 ? '${data.dueReviewCount} 个知识点到期' : '今日已背诵完成',
-                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
+                    subtitle,
+                    style: const TextStyle(fontSize: 11.5, color: Colors.black45, fontWeight: FontWeight.w500),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
-          ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF5B5FEF).withOpacity(0.06),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                actionText,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF5B5FEF),
+                ),
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
 
-/// 极简上传真题入口
+/// 备考资料中心卡片
+class _PdfMaterialCard extends StatelessWidget {
+  const _PdfMaterialCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF6F8FF),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFF5B5FEF).withOpacity(0.15), width: 1.0),
+              ),
+              child: const Icon(Icons.picture_as_pdf_outlined, color: Color(0xFF5B5FEF), size: 22),
+            ),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '个性化资料库',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.black87),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    '导入 PDF 真题以进行全考点拆解',
+                    style: TextStyle(fontSize: 11.5, color: Colors.black45),
+                  ),
+                ],
+              ),
+            ),
+            const _MinimalUploadEntry(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 极简上传 PDF 功能组件
 class _MinimalUploadEntry extends StatefulWidget {
   const _MinimalUploadEntry();
 
@@ -616,21 +526,32 @@ class _MinimalUploadEntryState extends State<_MinimalUploadEntry> {
     return GestureDetector(
       onTap: _isUploading ? null : () => _uploadPdf(context),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.03),
-          borderRadius: BorderRadius.circular(16),
+          color: const Color(0xFF5B5FEF),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF5B5FEF).withOpacity(0.2),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             _isUploading
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : Icon(Icons.upload_file_rounded, color: Colors.black38, size: 18),
-            const SizedBox(width: 8),
+                ? const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.cloud_upload_outlined, color: Colors.white, size: 14),
+            const SizedBox(width: 6),
             Text(
-              _isUploading ? '上传中...' : '上传真题 PDF',
-              style: const TextStyle(color: Colors.black38, fontSize: 13, fontWeight: FontWeight.w600),
+              _isUploading ? '导入中' : '导入 PDF',
+              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -651,7 +572,6 @@ class _MinimalUploadEntryState extends State<_MinimalUploadEntry> {
     final file = result.files.first;
     if (file.path == null) return;
 
-    // 显示科目年份选择
     final params = await _showUploadParamsDialog(context);
     if (params == null) return;
 
@@ -747,6 +667,47 @@ class _MinimalUploadEntryState extends State<_MinimalUploadEntry> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 每日一言与备考金句
+class _DailyQuoteCard extends StatelessWidget {
+  const _DailyQuoteCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 100),
+      child: Column(
+        children: [
+          Icon(
+            Icons.format_quote_rounded,
+            color: const Color(0xFF5B5FEF).withOpacity(0.12),
+            size: 38,
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '“ 每一个努力背诵逻辑公式的深夜，都在为你未来科学决策的每一个管理动作铺路。 ”',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontStyle: FontStyle.italic,
+              color: Colors.black38,
+              height: 1.6,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '—— MEM AI 智能导师',
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.bold,
+              color: Colors.black26,
+            ),
+          ),
+        ],
       ),
     );
   }

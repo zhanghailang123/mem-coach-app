@@ -31,6 +31,14 @@ TYPE_MAP = {
     "argument_writing": "论说文"
 }
 
+CONDITION_SUFFICIENCY_OPTIONS = {
+    "A": "条件(1)充分，但条件(2)不充分。",
+    "B": "条件(2)充分，但条件(1)不充分。",
+    "C": "条件(1)和条件(2)单独都不充分，但联合起来充分。",
+    "D": "条件(1)充分，条件(2)也充分。",
+    "E": "条件(1)和条件(2)单独都不充分，联合起来也不充分。",
+}
+
 def parse_markdown_question(file_path):
     """解析 Markdown 题目文件"""
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -74,7 +82,13 @@ def parse_markdown_question(file_path):
     options_match = re.search(r'##\s*选项\s*\n(.*?)(?=\n##|$)', body, re.DOTALL)
     if options_match:
         options_text = options_match.group(1).strip()
-        question['options'] = parse_options(options_text)
+        question_type = str(question.get('type') or '')
+        if is_condition_sufficiency(question_type, tags, options_text):
+            conditions = parse_condition_sufficiency_conditions(options_text)
+            question['stem'] = append_conditions_to_stem(question['stem'], conditions)
+            question['options'] = json.dumps(CONDITION_SUFFICIENCY_OPTIONS, ensure_ascii=False)
+        else:
+            question['options'] = parse_options(options_text)
     else:
         question['options'] = None
 
@@ -146,10 +160,48 @@ def parse_options(options_text):
     options = {}
     lines = options_text.strip().split('\n')
     for line in lines:
-        match = re.match(r'^([A-E])\.\s*(.+)$', line.strip())
+        match = re.match(r'^([A-E])[\.\、\s]+(.+)$', line.strip())
         if match:
             options[match.group(1)] = match.group(2).strip()
     return json.dumps(options, ensure_ascii=False) if options else None
+
+def is_condition_sufficiency(question_type, tags, options_text):
+    """判断是否为管综数学条件充分性题。"""
+    if question_type == "condition_sufficiency":
+        return True
+    if "条件充分性判断" in (tags or []):
+        return True
+    return bool(re.search(r'条件\s*[\(（]\s*1\s*[\)）]', options_text or '')) and bool(
+        re.search(r'条件\s*[\(（]\s*2\s*[\)）]', options_text or '')
+    )
+
+def parse_condition_sufficiency_conditions(options_text):
+    """从 code-199 的条件充分性选项区提取条件(1)/(2)文本。"""
+    text = (options_text or '').strip()
+    matches = list(re.finditer(r'条件\s*[\(（]\s*([12])\s*[\)）]\s*[:：]?', text))
+    if len(matches) < 2:
+        return []
+
+    conditions = []
+    for index, match in enumerate(matches[:2]):
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        content = text[start:end].strip()
+        content = re.sub(r'^\s*\|\s*', '', content)
+        content = re.sub(r'\s*\|\s*$', '', content)
+        if content:
+            conditions.append(content.strip())
+    return conditions
+
+def append_conditions_to_stem(stem, conditions):
+    """将条件充分性题的条件文本并入题干，避免移动端丢失条件。"""
+    stem = stem or ''
+    if not conditions:
+        return stem
+    if "条件(1)" in stem or "条件（1）" in stem:
+        return stem
+    condition_lines = [f"{index}. {content}" for index, content in enumerate(conditions, start=1)]
+    return f"{stem.strip()}\n\n**已知条件：**\n" + "\n".join(condition_lines)
 
 def create_database(db_path):
     """创建数据库表"""
