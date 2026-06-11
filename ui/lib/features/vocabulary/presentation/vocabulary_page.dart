@@ -884,18 +884,13 @@ class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
   }
 
   Widget _buildFloatingAiButton() {
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
-    return Positioned(
-      right: 16,
-      bottom: 16 + bottomPadding,
-      child: FloatingActionButton(
-        onPressed: () {
-          final pageContext = PageContextManager().currentContext;
-          ChatSheet.show(context, pageContext: pageContext);
-        },
-        backgroundColor: const Color(0xFF5B5FEF),
-        child: const AiSparkleLogo(size: 24, color: Colors.white),
-      ),
+    return FloatingActionButton(
+      onPressed: () {
+        final pageContext = PageContextManager().currentContext;
+        ChatSheet.show(context, pageContext: pageContext);
+      },
+      backgroundColor: const Color(0xFF5B5FEF),
+      child: const AiSparkleLogo(size: 24, color: Colors.white),
     );
   }
 }
