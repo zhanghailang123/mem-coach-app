@@ -983,7 +983,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
           final isChoice = options.isNotEmpty && !isEssay;
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 40),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
