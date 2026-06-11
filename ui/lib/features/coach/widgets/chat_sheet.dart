@@ -738,7 +738,7 @@ class _ChatSheetState extends State<ChatSheet> {
                                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                                   itemCount: _messages.length + (showLiveThinking ? 1 : 0),
                                   itemBuilder: (context, index) {
-                                    // 如果有思考状态，在最后一个位置显示实时思考卡片（符合聊天习惯）
+                                    // 如果有思考状态，在最后一个位置显示实时思考卡片（默认折叠）
                                     if (showLiveThinking && index == _messages.length) {
                                       return Padding(
                                         padding: const EdgeInsets.only(top: 8, bottom: 24),
@@ -859,71 +859,10 @@ class _ChatSheetState extends State<ChatSheet> {
   Widget _buildMessageItem(_ChatMessage message) {
     final hasToolCalls = message.role == _ChatRole.assistant && message.toolCalls.isNotEmpty;
     final reasoningContent = _nullableMessageText(message.reasoningContent);
-    if (!hasToolCalls && reasoningContent == null) {
-      return MarkdownBubble(message: message);
-    }
-
-    final children = <Widget>[MarkdownBubble(message: message)];
-
-    if (reasoningContent != null) {
-      children.add(
-        Padding(
-          padding: const EdgeInsets.only(left: 4, right: 4, bottom: 8),
-          child: DeepThinkingCard(
-            thinkingText: reasoningContent,
-            isLoading: false,
-            stage: 4,
-            isCollapsible: true,
-            autoCollapseOnComplete: true,
-            maxHeight: 260,
-          ),
-        ),
-      );
-    }
-
-    if (hasToolCalls) {
-      final names = message.toolCalls
-          .map((call) => call.name.trim())
-          .where((name) => name.isNotEmpty)
-          .toSet()
-          .join('、');
-      final summary = names.isEmpty
-          ? '工具调用 ${message.toolCalls.length} 次'
-          : '已使用工具：$names';
-      children.add(
-        Padding(
-          padding: const EdgeInsets.only(left: 4, right: 4, bottom: 8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF4F6FA),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.black.withOpacity(0.06)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.build_circle_outlined, size: 14, color: Color(0xFF5B5FEF)),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    summary,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: children,
-    );
+    
+    // 只渲染消息本身，不显示工具调用和 reasoning
+    // 工具调用已通过 ToolActivityBar 统一展示，避免重复
+    return MarkdownBubble(message: message);
   }
 
   bool _isTransientStatus() {

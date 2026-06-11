@@ -70,7 +70,8 @@ class _DeepThinkingCardState extends State<DeepThinkingCard>
   void initState() {
     super.initState();
     _hasAutoCollapsedForCurrentCompletion = _shouldAutoCollapse(widget);
-    _isCollapsed = _hasAutoCollapsedForCurrentCompletion;
+    // 默认折叠（除非已完成且不自动折叠）
+    _isCollapsed = widget.isCollapsible && (widget.stage != 4 || _hasAutoCollapsedForCurrentCompletion);
     _collapseController = AnimationController(
       vsync: this,
       duration: _collapseDuration,
