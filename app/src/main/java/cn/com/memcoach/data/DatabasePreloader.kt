@@ -230,7 +230,6 @@ class DatabasePreloader(
               AND id LIKE '20__-%-q%'
               AND options IS NOT NULL
               AND options != ''
-              AND stem LIKE '%已知条件%'
             """.trimIndent(),
             null
         ).use { cursor ->
@@ -248,7 +247,6 @@ class DatabasePreloader(
                   AND (
                       options IS NULL
                       OR options = ''
-                      OR stem NOT LIKE '%已知条件%'
                   )
             """.trimIndent()
 
@@ -287,7 +285,6 @@ class DatabasePreloader(
               AND (
                   options IS NULL
                   OR options = ''
-                  OR stem NOT LIKE '%已知条件%'
               )
             """.trimIndent()
         ).use { cursor ->

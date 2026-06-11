@@ -8,6 +8,8 @@ import cn.com.memcoach.data.entity.VocabularyReview
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
+import cn.com.memcoach.data.entity.Vocabulary
+import java.util.UUID
 
 class VocabularyToolHandler(
     private val vocabularyDao: VocabularyDao,
@@ -18,7 +20,9 @@ class VocabularyToolHandler(
         "vocabulary_list",
         "vocabulary_detail",
         "vocabulary_review",
-        "vocabulary_search"
+        "vocabulary_search",
+        "vocabulary_add",
+        "vocabulary_stats"
     )
 
     override suspend fun execute(toolName: String, arguments: String): String {
@@ -28,6 +32,8 @@ class VocabularyToolHandler(
             "vocabulary_detail" -> getVocabularyDetail(args)
             "vocabulary_review" -> submitReview(args)
             "vocabulary_search" -> searchVocabulary(args)
+            "vocabulary_add" -> addVocabulary(args)
+            "vocabulary_stats" -> getVocabularyStats()
             else -> """{"error":"unknown tool"}"""
         }
     }
@@ -52,6 +58,16 @@ class VocabularyToolHandler(
             name = "vocabulary_search",
             description = "搜索单词",
             parameters = """{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}"""
+        ),
+        ToolDefinition(
+            name = "vocabulary_add",
+            description = "添加新单词到本地词库",
+            parameters = """{"type":"object","properties":{"word":{"type":"string"},"phonetic":{"type":"string"},"definitions":{"type":"string"},"explanation":{"type":"string"},"tags":{"type":"string"}},"required":["word"]}"""
+        ),
+        ToolDefinition(
+            name = "vocabulary_stats",
+            description = "获取单词统计数据（包括各状态单词数及待复习数）",
+            parameters = """{"type":"object","properties":{}}"""
         )
     )
 
@@ -153,6 +169,72 @@ class VocabularyToolHandler(
                     })
                 }
             })
+        }.toString()
+    }
+
+    private suspend fun addVocabulary(args: JsonObject) = withContext(Dispatchers.IO) {
+        val wordText = args["word"]?.jsonPrimitive?.contentOrNull?.trim()
+            ?: return@withContext """{"error":"word is required"}"""
+
+        if (wordText.isEmpty()) {
+            return@withContext """{"error":"word is empty"}"""
+        }
+
+        // 检查单词是否已存在
+        val existing = vocabularyDao.getByWord(wordText)
+        if (existing != null) {
+            return@withContext buildJsonObject {
+                put("success", true)
+                put("already_exists", true)
+                put("id", existing.id)
+                put("word", existing.word)
+            }.toString()
+        }
+
+        val phonetic = args["phonetic"]?.jsonPrimitive?.contentOrNull
+        val definitionsRaw = args["definitions"]?.jsonPrimitive?.contentOrNull ?: "[]"
+        val explanation = args["explanation"]?.jsonPrimitive?.contentOrNull 
+            ?: "### $wordText\n暂无详细释义。"
+        val tags = args["tags"]?.jsonPrimitive?.contentOrNull ?: "[]"
+
+        // 构造新单词实体
+        val vocabId = "vocab-${UUID.randomUUID()}"
+        val vocab = Vocabulary(
+            id = vocabId,
+            word = wordText,
+            phonetic = phonetic,
+            definitions = definitionsRaw,
+            tags = tags,
+            explanation = explanation
+        )
+
+        try {
+            vocabularyDao.insert(vocab)
+            buildJsonObject {
+                put("success", true)
+                put("id", vocabId)
+                put("word", wordText)
+            }.toString()
+        } catch (e: Exception) {
+            """{"error":"${e.message ?: "failed to insert"}"}"""
+        }
+    }
+
+    private suspend fun getVocabularyStats() = withContext(Dispatchers.IO) {
+        val review = vocabularyDao.getDueForReview(System.currentTimeMillis(), 9999).size
+        val learning = vocabularyDao.countByStatus("learning")
+        val mastered = vocabularyDao.countByStatus("mastered")
+        val newWords = vocabularyDao.countByStatus("new")
+        val total = review + learning + mastered + newWords
+
+        // 返回各状态单词数
+        buildJsonObject {
+            put("success", true)
+            put("total", total)
+            put("review", review)
+            put("learning", learning)
+            put("mastered", mastered)
+            put("new_words", newWords)
         }.toString()
     }
 
