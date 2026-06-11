@@ -299,24 +299,17 @@ class _ChatSheetState extends State<ChatSheet> {
         _pdfStatusTimer?.cancel();
         _pdfStatusTimer = null;
         _schedulePdfStatusDismiss();
-      } else if (_pdfParseStatus == 'error' || _pdfParseStatus == 'not_found') {
-        _pdfStatusTimer?.cancel();
-        _pdfStatusTimer = null;
       }
     } catch (error) {
-      if (!mounted || _pdfJobId != jobId) return;
-      setState(() {
-        _pdfParseStatus = 'error';
-        _pdfParseErrors = ['解析状态查询失败：$error'];
-      });
-      _pdfStatusTimer?.cancel();
-      _pdfStatusTimer = null;
+      if (!mounted || _pdfJobId == null) return;
+      // 网络波动不停止轮询，仅记录日志
+      debugPrint('轮询 PDF 状态异常: $error');
     }
   }
 
   void _schedulePdfStatusDismiss() {
     _pdfDismissTimer?.cancel();
-    _pdfDismissTimer = Timer(const Duration(milliseconds: 2500), () {
+    _pdfDismissTimer = Timer(const Duration(milliseconds: 5000), () {
       if (!mounted) return;
       setState(_clearPdfStatusCard);
     });
@@ -370,6 +363,10 @@ class _ChatSheetState extends State<ChatSheet> {
           break;
         case 'thinking_update':
           _status = 'Agent 正在思考...';
+          // 如果当前是占位符，先清空再追加真实内容
+          if (_thinkingText == _thinkingPlaceholder) {
+            _thinkingText = '';
+          }
           _thinkingText += event.content ?? '';
           _thinkingStage = 2;
           final thinkingResult = DeepThinkingParser.extractDeepThinking(_thinkingText);
@@ -379,11 +376,17 @@ class _ChatSheetState extends State<ChatSheet> {
           break;
         case 'tool_call_start':
           _status = '正在调用工具：${event.toolName ?? 'unknown'}';
+          // 核心修复：确保助手消息在工具结果之前就已经存在于列表中
+          _ensureAssistantMessage();
+          
           _currentTurnToolCalls.add(_ToolCallRecord(
             id: event.toolCallId ?? 'tool_${DateTime.now().millisecondsSinceEpoch}_${_currentTurnToolCalls.length}',
             name: event.toolName ?? 'unknown',
             arguments: event.arguments ?? '{}',
           ));
+          // 同步将工具调用关联到当前的助手消息，保证历史记录顺序正确
+          _attachCurrentToolCallsToLastAssistantMessage();
+
           _toolActivities.add(ToolActivity(
             toolName: event.toolName ?? 'unknown',
             status: ToolActivityStatus.running,
@@ -435,6 +438,9 @@ class _ChatSheetState extends State<ChatSheet> {
           _thinkingEndTime = DateTime.now().millisecondsSinceEpoch;
           _attachThinkingToLastAssistantMessage();
           _saveAssistantMessageToDatabase();
+          // 对话彻底结束，清空临时思考状态
+          _thinkingText = '';
+          _thinkingStartTime = null;
           break;
         case 'error':
           _running = false;
@@ -445,6 +451,8 @@ class _ChatSheetState extends State<ChatSheet> {
           _thinkingEndTime = DateTime.now().millisecondsSinceEpoch;
           _attachThinkingToLastAssistantMessage();
           _saveAssistantMessageToDatabase();
+          // 清空状态
+          _thinkingText = '';
           for (var i = 0; i < _toolActivities.length; i++) {
             if (_toolActivities[i].status == ToolActivityStatus.running) {
               _toolActivities[i] = _toolActivities[i].copyWith(
@@ -726,8 +734,8 @@ class _ChatSheetState extends State<ChatSheet> {
   }
 
   void _appendAssistantContent(String content) {
-    if (content.isEmpty) return;
     _ensureAssistantMessage();
+    if (content.isEmpty) return;
     final last = _messages.removeLast();
     // 使用增量合并而非累加（借鉴 OpenOmniBot 的 stream_text_merge.dart）
     final mergedContent = mergeAssistantContent(last.content, content);
@@ -834,10 +842,10 @@ class _ChatSheetState extends State<ChatSheet> {
                                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                                   itemCount: _messages.length + (showLiveThinking ? 1 : 0),
                                   itemBuilder: (context, index) {
-                                    // 如果有思考状态，在第一个位置显示实时思考卡片
-                                    if (showLiveThinking && index == 0) {
+                                    // 如果有思考状态，在最后一个位置显示实时思考卡片（符合聊天习惯）
+                                    if (showLiveThinking && index == _messages.length) {
                                       return Padding(
-                                        padding: const EdgeInsets.only(bottom: 12),
+                                        padding: const EdgeInsets.only(top: 8, bottom: 24),
                                         child: DeepThinkingCard(
                                           thinkingText: liveThinkingText,
                                           isLoading: _isThinking,
@@ -849,9 +857,8 @@ class _ChatSheetState extends State<ChatSheet> {
                                         ),
                                       );
                                     }
-                                    // 调整消息索引
-                                    final messageIndex = showLiveThinking ? index - 1 : index;
-                                    final message = _messages[messageIndex];
+                                    
+                                    final message = _messages[index];
                                     if (message.role == _ChatRole.tool) {
                                       return const SizedBox.shrink();
                                     }
@@ -1343,7 +1350,16 @@ class _ChatSheetState extends State<ChatSheet> {
   
   List<Map<String, dynamic>> _messagesForNativeHistory() {
     return _messages
-        .where((message) => message.role != _ChatRole.system && message.content.trim().isNotEmpty)
+        .where((message) {
+          if (message.role == _ChatRole.system) return false;
+          // 核心修复：强制保留所有工具结果消息，即使内容为空
+          if (message.role == _ChatRole.tool) return true;
+          // 保留有内容的消息
+          if (message.content.trim().isNotEmpty) return true;
+          // 保留：带有工具调用的助手消息（即使内容为空，ReAct 协议也必须保留它）
+          if (message.role == _ChatRole.assistant && message.toolCalls.isNotEmpty) return true;
+          return false;
+        })
         .map((message) {
           final role = switch (message.role) {
             _ChatRole.user => 'user',

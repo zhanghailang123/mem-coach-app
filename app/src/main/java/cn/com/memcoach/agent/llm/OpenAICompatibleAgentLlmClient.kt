@@ -208,7 +208,8 @@ class OpenAICompatibleAgentLlmClient(
                         },
                         "prompt_tokens" to usage?.promptTokens,
                         "completion_tokens" to usage?.completionTokens,
-                        "raw_response_preview" to body
+                        "raw_response_length" to body.length,
+                        "raw_response_sha256" to AgentTraceLogger.sha256(body)
                     )
                 )
                 LlmTurnResult(
@@ -254,10 +255,12 @@ class OpenAICompatibleAgentLlmClient(
         val url = "$normalizedBaseUrl/chat/completions"
         Log.d(TAG, "请求 URL: $url")
 
+        val requestMessages = sanitizeToolCallMessages(messages, traceId)
+
         val payload = JSONObject().apply {
             put("model", modelId?.takeIf { it.isNotBlank() } ?: defaultModel)
             put("stream", stream)
-            put("messages", JSONArray(messages.map { it.toJson() }))
+            put("messages", JSONArray(requestMessages.map { it.toJson() }))
             if (!tools.isNullOrEmpty()) {
                 put("tools", JSONArray(tools.map { tool ->
                     JSONObject(tool).apply {
@@ -278,7 +281,6 @@ class OpenAICompatibleAgentLlmClient(
         }
 
         val payloadStr = payload.toString()
-        Log.d(TAG, "请求 Payload: $payloadStr")
         AgentTraceLogger.event(
             "llm_request",
             mapOf(
@@ -286,12 +288,13 @@ class OpenAICompatibleAgentLlmClient(
                 "model" to payload.optStringSafe("model", modelId ?: defaultModel),
                 "stream" to stream,
                 "url" to url,
-                "messages_count" to messages.size,
-                "messages" to AgentTraceLogger.summarizeMessages(messages),
+                "messages_count" to requestMessages.size,
+                "messages" to AgentTraceLogger.summarizeMessages(requestMessages),
+                "original_messages_count" to messages.size,
                 "tools_count" to tools.orEmpty().size,
                 "tools" to AgentTraceLogger.summarizeTools(tools),
-                "payload_sha256" to AgentTraceLogger.sha256(payloadStr),
-                "payload_preview" to payloadStr
+                "payload_length" to payloadStr.length,
+                "payload_sha256" to AgentTraceLogger.sha256(payloadStr)
             )
         )
 
@@ -306,6 +309,72 @@ class OpenAICompatibleAgentLlmClient(
                 }
             }
             .build()
+    }
+
+    private fun sanitizeToolCallMessages(messages: List<ChatMessage>, traceId: String): List<ChatMessage> {
+        val sanitized = mutableListOf<ChatMessage>()
+        var index = 0
+        var removedAssistantToolCalls = 0
+        var removedOrphanToolMessages = 0
+
+        while (index < messages.size) {
+            val message = messages[index]
+            val toolCalls = message.toolCalls.orEmpty()
+
+            if (message.role == "assistant" && toolCalls.isNotEmpty()) {
+                val collectedToolMessages = mutableListOf<ChatMessage>()
+                var cursor = index + 1
+
+                while (cursor < messages.size && messages[cursor].role == "tool") {
+                    collectedToolMessages.add(messages[cursor])
+                    cursor++
+                }
+
+                val expectedIds = toolCalls.map { it.id }.filter { it.isNotBlank() }.toSet()
+                val actualIds = collectedToolMessages.mapNotNull { it.toolCallId?.takeIf { id -> id.isNotBlank() } }.toSet()
+
+                if (expectedIds.isNotEmpty() && actualIds.containsAll(expectedIds)) {
+                    sanitized.add(message)
+                    sanitized.addAll(collectedToolMessages)
+                } else {
+                    removedAssistantToolCalls++
+                    removedOrphanToolMessages += collectedToolMessages.size
+                    sanitized.add(
+                        ChatMessage(
+                            role = "assistant",
+                            content = message.content.takeIf { it.isNotBlank() }
+                                ?: "之前有一次工具调用未完整返回结果，已忽略该次中间调用记录。"
+                        )
+                    )
+                }
+                index = cursor
+                continue
+            }
+
+            if (message.role == "tool") {
+                removedOrphanToolMessages++
+                index++
+                continue
+            }
+
+            sanitized.add(message)
+            index++
+        }
+
+        if (removedAssistantToolCalls > 0 || removedOrphanToolMessages > 0) {
+            AgentTraceLogger.event(
+                "llm_messages_sanitized",
+                mapOf(
+                    "trace_id" to traceId,
+                    "original_count" to messages.size,
+                    "sanitized_count" to sanitized.size,
+                    "removed_assistant_tool_calls" to removedAssistantToolCalls,
+                    "removed_orphan_tool_messages" to removedOrphanToolMessages
+                )
+            )
+        }
+
+        return sanitized
     }
 
     private fun parseStreamLine(line: String, toolCalls: MutableMap<Int, ToolCallBuilder>): LlmStreamChunk? {
