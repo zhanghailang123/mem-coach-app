@@ -219,116 +219,226 @@ class _ChatHeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final briefingText = isLoading
-        ? '正在分析你的学习数据...'
+        ? '正在智能分析你的学习进度...'
         : data.briefing.isNotEmpty
             ? data.briefing
             : '告诉我你的目标，我会把真题、知识点和复习节奏串起来。';
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9FAFF),
+        // 深邃科技蓝渐变背景
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF131525),
+            Color(0xFF1C1F3F),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(32),
-        border: Border.all(color: const Color(0xFFE9ECFF)),
+        border: Border.all(
+          color: const Color(0xFF5B5FEF).withOpacity(0.35),
+          width: 2,
+        ),
+        // AI 专属极光发光外投影
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF5B5FEF).withOpacity(0.4),
+            blurRadius: 36,
+            offset: const Offset(0, 16),
+          ),
+          BoxShadow(
+            color: const Color(0xFF20B486).withOpacity(0.15),
+            blurRadius: 36,
+            offset: const Offset(0, 16),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // AI 导师身份及问候
           Row(
             children: [
+              // 巨型发光 AI 徽章
               Container(
-                width: 36,
-                height: 36,
+                width: 54,
+                height: 54,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(10),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF5B5FEF), Color(0xFF20B486)],
+                  ),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white24, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF5B5FEF).withOpacity(0.6),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-                child: Icon(Icons.auto_awesome_rounded, color: Theme.of(context).colorScheme.primary, size: 18),
+                child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 28),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(_getGreeting(), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black54)),
-                    const SizedBox(height: 1),
+                    Row(
+                      children: [
+                        const Text(
+                          'MEM AI 智能导师',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        // 呼吸式在线标签
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF20B486).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFF20B486).withOpacity(0.4), width: 1),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF20B486),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Text(
+                                '在线',
+                                style: TextStyle(
+                                  color: Color(0xFF20B486),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
                     Text(
                       briefingText,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.black38, fontSize: 12),
+                      style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.4),
                     ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 28),
+
+          // 巨型拟真对话条入口
           GestureDetector(
             onTap: () => ChatSheet.show(context),
             child: Container(
-              padding: const EdgeInsets.fromLTRB(24, 26, 16, 26),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.12)),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: const Color(0xFF5B5FEF).withOpacity(0.1),
+                  width: 1,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
-                    blurRadius: 36,
-                    offset: const Offset(0, 16),
+                    color: Colors.black.withOpacity(0.25),
+                    blurRadius: 15,
+                    offset: const Offset(0, 8),
                   ),
                 ],
               ),
               child: Row(
                 children: [
                   Container(
-                    width: 42,
-                    height: 42,
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.06),
-                      shape: BoxShape.circle,
+                      color: const Color(0xFF5B5FEF).withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Icon(Icons.chat_bubble_outline_rounded, color: Theme.of(context).colorScheme.primary, size: 22),
+                    child: const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF5B5FEF), size: 24),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 14),
                   const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('从一次对话开始', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.black87, letterSpacing: -0.5)),
-                        SizedBox(height: 4),
-                        Text('问我：今天该怎么学？', style: TextStyle(color: Colors.black38, fontSize: 13.5)),
+                        Text(
+                          '即刻发起对话',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        SizedBox(height: 3),
+                        Text(
+                          '“今天我该复习什么？”',
+                          style: TextStyle(color: Colors.black45, fontSize: 13.5),
+                        ),
                       ],
                     ),
                   ),
+                  // 发光启动按钮
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    width: 48,
+                    height: 48,
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
                         colors: [Color(0xFF5B5FEF), Color(0xFF20B486)],
                       ),
                       shape: BoxShape.circle,
                       boxShadow: [
-                        BoxShadow(color: Color(0x405B5FEF), blurRadius: 10, offset: Offset(0, 4)),
+                        BoxShadow(
+                          color: Color(0x505B5FEF),
+                          blurRadius: 10,
+                          offset: Offset(0, 4),
+                        ),
                       ],
                     ),
-                    child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 22),
+                    child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 22),
                   ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 24),
-          const Text('你可以这样问', style: TextStyle(fontSize: 11, color: Colors.black26, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+
+          // 引导 Prompt 提示词
+          const Text(
+            '你可以这样问我',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.white38,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 10,
             runSpacing: 10,
             children: const [
-              _PromptChip(label: '我今天只有 20 分钟', prompt: '帮我安排今天 20 分钟 MEM 学习计划'),
-              _PromptChip(label: '帮我复盘错题', prompt: '根据我的错题和学习记录，帮我复盘当前最需要补的知识点'),
-              _PromptChip(label: '出 3 道逻辑题', prompt: '给我 3 道逻辑题练习，并在我答完后讲解思路'),
+              _PromptChip(label: '⏱️ 我今天只有 20 分钟', prompt: '帮我安排今天 20 分钟 MEM 学习计划'),
+              _PromptChip(label: '📝 帮我复盘错题', prompt: '根据我的错题和学习记录，帮我复盘当前最需要补的知识点'),
+              _PromptChip(label: '💡 出 3 道逻辑题', prompt: '给我 3 道逻辑题练习，并在我答完后讲解思路'),
             ],
           ),
         ],
@@ -336,6 +446,7 @@ class _ChatHeroCard extends StatelessWidget {
     );
   }
 
+  // 获取时间问候语
   String _getGreeting() {
     final hour = DateTime.now().hour;
     if (hour < 6) return '夜深了，先轻量复盘。';
@@ -357,12 +468,16 @@ class _PromptChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return ActionChip(
       label: Text(label),
-      avatar: const Icon(Icons.bolt_rounded, size: 16, color: Color(0xFF5B5FEF)),
       onPressed: () => ChatSheet.show(context, initialText: prompt),
-      backgroundColor: Colors.white.withOpacity(0.94),
-      side: BorderSide(color: Colors.white.withOpacity(0.45)),
-      labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.black87),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      backgroundColor: Colors.white.withOpacity(0.08),
+      side: BorderSide(color: Colors.white.withOpacity(0.15), width: 1),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      labelStyle: TextStyle(
+        fontWeight: FontWeight.w600,
+        fontSize: 12.5,
+        color: Colors.white.withOpacity(0.9),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
     );
   }
 }
