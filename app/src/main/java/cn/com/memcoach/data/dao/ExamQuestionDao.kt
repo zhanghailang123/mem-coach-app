@@ -56,7 +56,7 @@ interface ExamQuestionDao {
 
     /** 多维搜索（默认只返回可直接练习的高质量题） */
     @Query("""
-        SELECT * FROM exam_questions 
+        SELECT * FROM exam_questions
         WHERE (:subject IS NULL OR subject = :subject)
           AND (:section IS NULL OR section = :section)
           AND (:questionNumber IS NULL OR question_number = :questionNumber)
@@ -79,8 +79,8 @@ interface ExamQuestionDao {
         type: String? = null,
         difficulty: String? = null,
         year: Int? = null,
-        parseStatus: String? = "parsed",
-        minConfidence: Float = 0.6f,
+        parseStatus: String? = null,
+        minConfidence: Float = 0.0f,
         limit: Int = 20
     ): List<ExamQuestion>
 

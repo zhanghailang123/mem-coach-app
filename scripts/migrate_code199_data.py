@@ -15,11 +15,10 @@ import yaml
 CODE_199_PATH = Path(r"D:\newIDeaProject\code-199\content")
 TARGET_DB_PATH = Path(r"D:\newIDeaProject\mem-coach-app\app\src\main\assets\exam_questions.db")
 
-# 科目映射
-SUBJECT_MAP = {
+# 管综小模块映射
+SECTION_MAP = {
     "math": "数学",
     "logic": "逻辑",
-    "english": "英语",
     "writing": "写作"
 }
 
@@ -49,16 +48,21 @@ def parse_markdown_question(file_path):
         return None
 
     # 解析正文各部分
+    source_subject = frontmatter.get('subject', '')
+    knowledge_points = frontmatter.get('knowledge_points', [])
+    tags = frontmatter.get('tags', [])
     question = {
         'id': frontmatter.get('id', ''),
         'year': extract_year(frontmatter.get('id', '')),
-        'subject': frontmatter.get('subject', ''),
-        'section': extract_section(frontmatter),
+        'subject': normalize_subject(source_subject),
+        'section': normalize_section(source_subject),
+        'topic': extract_topic(knowledge_points),
         'question_number': extract_question_number(frontmatter.get('id', '')),
         'type': frontmatter.get('type', 'choice'),
-        'difficulty': frontmatter.get('difficulty', 3),
-        'knowledge_points': frontmatter.get('knowledge_points', []),
-        'tags': frontmatter.get('tags', []),
+        'difficulty': normalize_difficulty(frontmatter.get('difficulty', 3)),
+        'knowledge_points': knowledge_points,
+        'knowledge_tags': merge_tags(knowledge_points, tags),
+        'tags': tags,
         'source': frontmatter.get('source', ''),
     }
 
@@ -94,12 +98,48 @@ def extract_question_number(question_id):
     match = re.search(r'-q(\d+)', question_id)
     return int(match.group(1)) if match else None
 
-def extract_section(frontmatter):
-    """从知识点提取小模块"""
-    kps = frontmatter.get('knowledge_points', [])
-    if kps:
-        return kps[0]
+def extract_topic(knowledge_points):
+    """从知识点提取主知识点"""
+    return knowledge_points[0] if knowledge_points else None
+
+def normalize_subject(raw_subject):
+    """code-199 的 math/logic/writing 属于管综大科目"""
+    if raw_subject in ("math", "logic", "writing"):
+        return "management_comprehensive"
+    if raw_subject in ("english", "english2", "english_ii"):
+        return "english"
+    return raw_subject or "management_comprehensive"
+
+def normalize_section(raw_subject):
+    """code-199 的 subject 在 MEM Coach 中是小模块 section"""
+    if raw_subject in ("math", "logic", "writing"):
+        return raw_subject
+    if raw_subject in ("english", "english2", "english_ii"):
+        return "english"
     return None
+
+def normalize_difficulty(raw):
+    """Room 中 difficulty 使用 basic/medium/hard 文本。"""
+    value = str(raw).strip()
+    if value == "1":
+        return "basic"
+    if value in ("2", "3"):
+        return "medium"
+    if value in ("4", "5"):
+        return "hard"
+    return value or None
+
+def merge_tags(*groups):
+    """合并 code-199 的 knowledge_points 和 tags，保持原顺序去重。"""
+    merged = []
+    seen = set()
+    for group in groups:
+        for item in group or []:
+            text = str(item).strip()
+            if text and text not in seen:
+                merged.append(text)
+                seen.add(text)
+    return merged
 
 def parse_options(options_text):
     """解析选项文本为 JSON"""
@@ -118,29 +158,50 @@ def create_database(db_path):
     cursor = conn.cursor()
 
     cursor.execute('''
-    CREATE TABLE IF NOT EXISTS exam_questions (
-        id TEXT PRIMARY KEY,
-        year INTEGER,
+    DROP TABLE IF EXISTS exam_questions
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE exam_questions (
+        id TEXT PRIMARY KEY NOT NULL,
+        year INTEGER NOT NULL,
         subject TEXT NOT NULL,
         section TEXT,
         question_number INTEGER,
+        chapter TEXT,
+        topic TEXT,
         type TEXT NOT NULL,
-        difficulty INTEGER DEFAULT 3,
+        difficulty TEXT,
         stem TEXT NOT NULL,
         options TEXT,
-        answer TEXT NOT NULL,
+        answer TEXT,
         explanation TEXT,
-        knowledge_points TEXT,
-        tags TEXT,
-        source TEXT,
+        source_file TEXT NOT NULL,
+        source_document_id TEXT,
+        source_page INTEGER NOT NULL DEFAULT 0,
+        knowledge_tags TEXT,
         source_text TEXT,
+        source_page_type TEXT,
+        answer_source_text TEXT,
+        answer_source_page INTEGER,
+        merge_status TEXT NOT NULL DEFAULT 'merged',
         stem_hash TEXT,
-        parse_confidence REAL DEFAULT 1.0,
-        parse_status TEXT DEFAULT 'imported',
+        parse_confidence REAL NOT NULL DEFAULT 1.0,
+        parse_status TEXT NOT NULL DEFAULT 'parsed',
+        parse_notes TEXT,
+        exam_frequency INTEGER NOT NULL DEFAULT 0,
+        embedding BLOB,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
     )
     ''')
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS index_exam_questions_stem_hash ON exam_questions(stem_hash)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS index_exam_questions_parse_status ON exam_questions(parse_status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS index_exam_questions_section ON exam_questions(section)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS index_exam_questions_question_number ON exam_questions(question_number)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS index_exam_questions_merge_status ON exam_questions(merge_status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS index_exam_questions_source_document_id ON exam_questions(source_document_id)")
 
     conn.commit()
     return conn
@@ -160,32 +221,50 @@ def migrate_questions(source_dir, db_conn):
                 print(f"[FAIL] 解析失败: {md_file.name}")
                 error_count += 1
                 continue
+            if not question['year'] or not question['question_number'] or not question['section']:
+                print(f"[SKIP] 跳过非标准题目: {md_file.name}")
+                error_count += 1
+                continue
 
             now = int(datetime.now().timestamp() * 1000)
 
             cursor.execute('''
             INSERT OR REPLACE INTO exam_questions
-            (id, year, subject, section, question_number, type, difficulty,
-             stem, options, answer, explanation, knowledge_points, tags, source,
-             parse_status, parse_confidence, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, year, subject, section, question_number, chapter, topic, type, difficulty,
+             stem, options, answer, explanation, source_file, source_document_id, source_page,
+             knowledge_tags, source_text, source_page_type, answer_source_text, answer_source_page,
+             merge_status, stem_hash, parse_confidence, parse_status, parse_notes, exam_frequency,
+             embedding, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 question['id'],
                 question['year'],
                 question['subject'],
                 question['section'],
                 question['question_number'],
+                None,
+                question['topic'],
                 question['type'],
                 question['difficulty'],
                 question['stem'],
                 question['options'],
                 question['answer'],
                 question['explanation'],
-                json.dumps(question['knowledge_points'], ensure_ascii=False),
-                json.dumps(question['tags'], ensure_ascii=False),
                 question['source'],
+                None,
+                0,
+                json.dumps(question['knowledge_tags'], ensure_ascii=False),
+                None,
                 'imported',
+                None,
+                None,
+                'merged',
+                None,
                 1.0,
+                'parsed',
+                None,
+                0,
+                None,
                 now,
                 now
             ))
@@ -223,8 +302,8 @@ def main():
     cursor.execute("SELECT COUNT(*) FROM exam_questions")
     total = cursor.fetchone()[0]
 
-    cursor.execute("SELECT subject, COUNT(*) FROM exam_questions GROUP BY subject")
-    by_subject = cursor.fetchall()
+    cursor.execute("SELECT subject, section, COUNT(*) FROM exam_questions GROUP BY subject, section ORDER BY subject, section")
+    by_section = cursor.fetchall()
 
     print("\n" + "=" * 60)
     print("[STAT] 迁移完成统计")
@@ -232,9 +311,10 @@ def main():
     print(f"[OK] 成功: {success} 道")
     print(f"[ERR] 失败: {error} 道")
     print(f"[TOTAL] 数据库总计: {total} 道")
-    print("\n按科目统计:")
-    for subject, count in by_subject:
-        print(f"  - {SUBJECT_MAP.get(subject, subject)}: {count} 道")
+    print("\n按科目/模块统计:")
+    for subject, section, count in by_section:
+        section_name = SECTION_MAP.get(section, section)
+        print(f"  - {subject}/{section_name}: {count} 道")
 
     conn.close()
     print(f"\n[SAVE] 数据库已保存到: {TARGET_DB_PATH}")

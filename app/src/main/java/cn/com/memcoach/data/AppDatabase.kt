@@ -33,20 +33,21 @@ import cn.com.memcoach.data.entity.*
         StudyRecord::class,
         PdfDocument::class,
         ConversationEntity::class,
-        ChatMessageEntity::class
+        ChatMessageEntity::class,
+        AnswerRecord::class,
+        Vocabulary::class,
+        VocabularyReview::class
     ],
-    version = 7,
-
-
-    exportSchema = false  // MVP 阶段不导出 schema，后续可开启
+    version = 10,
+    exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 
-    /** 真题 DAO */
     abstract fun examQuestionDao(): ExamQuestionDao
-
-    /** 知识点 DAO */
     abstract fun knowledgeNodeDao(): KnowledgeNodeDao
+    abstract fun answerRecordDao(): AnswerRecordDao
+    abstract fun vocabularyDao(): VocabularyDao
+    abstract fun vocabularyReviewDao(): VocabularyReviewDao
 
     /** 知识关系边 DAO */
     abstract fun knowledgeEdgeDao(): KnowledgeEdgeDao
@@ -172,15 +173,28 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        /**
-         * 从版本 6 升级到版本 7 的 Migration。
-         *
-         * 为 PDF 真题统一管理增加来源文档 ID，支持按导入 PDF 查询和联动删除题目。
-         */
         private val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE `exam_questions` ADD COLUMN `source_document_id` TEXT")
                 database.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_questions_source_document_id` ON `exam_questions` (`source_document_id`)")
+            }
+        }
+
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `answer_records` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `question_id` TEXT NOT NULL,
+                        `user_answer` TEXT NOT NULL,
+                        `correct_answer` TEXT NOT NULL,
+                        `is_correct` INTEGER NOT NULL,
+                        `time_spent` INTEGER NOT NULL DEFAULT 0,
+                        `created_at` INTEGER NOT NULL
+                    )
+                """)
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_answer_records_question_id` ON `answer_records` (`question_id`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_answer_records_created_at` ON `answer_records` (`created_at`)")
             }
         }
 
@@ -198,13 +212,60 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                android.util.Log.i("AppDatabase", "升级数据库 v8 -> v9")
+            }
+        }
+
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                android.util.Log.i("AppDatabase", "升级数据库 v9 -> v10，添加单词本表")
+
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS vocabulary (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        word TEXT NOT NULL,
+                        phonetic TEXT,
+                        definitions TEXT NOT NULL,
+                        synonyms TEXT,
+                        confusables TEXT,
+                        tags TEXT,
+                        explanation TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'new',
+                        review_count INTEGER NOT NULL DEFAULT 0,
+                        last_review_at INTEGER,
+                        next_review_at INTEGER,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    )
+                """)
+
+                database.execSQL("CREATE INDEX idx_vocab_word ON vocabulary(word)")
+                database.execSQL("CREATE INDEX idx_vocab_status ON vocabulary(status)")
+                database.execSQL("CREATE INDEX idx_vocab_next_review ON vocabulary(next_review_at)")
+
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS vocabulary_reviews (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        vocab_id TEXT NOT NULL,
+                        is_correct INTEGER NOT NULL,
+                        review_type TEXT NOT NULL,
+                        time_spent INTEGER NOT NULL DEFAULT 0,
+                        created_at INTEGER NOT NULL,
+                        FOREIGN KEY(vocab_id) REFERENCES vocabulary(id) ON DELETE CASCADE
+                    )
+                """)
+            }
+        }
+
         private fun buildDatabase(context: Context): AppDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 DATABASE_NAME
             )
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .addCallback(DatabasePreloader(context))
                 .fallbackToDestructiveMigration()
                 .build()

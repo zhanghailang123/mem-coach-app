@@ -206,19 +206,32 @@ class ExamToolHandler(
     // ─── 工具实现 ───
 
     private suspend fun searchQuestions(args: JsonObject): String {
-        val subject = args["subject"]?.jsonPrimitive?.content ?: return errorJson("subject 必填")
+        val scope = normalizeExamScope(
+            subject = args["subject"]?.jsonPrimitive?.contentOrNull,
+            section = args["section"]?.jsonPrimitive?.contentOrNull
+        )
         val topic = args["topic"]?.jsonPrimitive?.contentOrNull
         val year = args["year"]?.jsonPrimitive?.intOrNull
         val type = args["type"]?.jsonPrimitive?.contentOrNull
-        val limit = args["limit"]?.jsonPrimitive?.intOrNull ?: 5
+        val limit = args["limit"]?.jsonPrimitive?.intOrNull ?: 100
+
+        android.util.Log.d(
+            "ExamToolHandler",
+            "搜索参数: subject=${scope.subject}, section=${scope.section}, year=$year, limit=$limit"
+        )
 
         val results = questionDao.search(
-            subject = subject,
+            subject = scope.subject,
+            section = scope.section,
             topic = topic,
             type = type,
             year = year,
+            parseStatus = null,
+            minConfidence = 0.0f,
             limit = limit
         )
+
+        android.util.Log.d("ExamToolHandler", "查询结果数量: ${results.size}")
 
         return buildJsonObject {
             put("count", results.size)
@@ -226,8 +239,10 @@ class ExamToolHandler(
                 results.forEach { q ->
                     add(buildJsonObject {
                         put("id", q.id)
-                        put("year", q.year)
+                        put("year", q.year ?: 0)
                         put("subject", q.subject)
+                        putNullable("section", q.section)
+                        putNullable("question_number", q.questionNumber)
                         put("type", q.type)
                         putNullable("topic", q.topic)
                         putNullable("difficulty", q.difficulty)
@@ -393,20 +408,22 @@ class ExamToolHandler(
     }
 
     private suspend fun generateMock(args: JsonObject): String {
-        val subject = normalizeSubject(args["subject"]?.jsonPrimitive?.content ?: return errorJson("subject 必填"))
-        val section = normalizeSection(args["section"]?.jsonPrimitive?.contentOrNull)
+        val scope = normalizeExamScope(
+            subject = args["subject"]?.jsonPrimitive?.content ?: return errorJson("subject 必填"),
+            section = args["section"]?.jsonPrimitive?.contentOrNull
+        )
         val questionCount = args["question_count"]?.jsonPrimitive?.intOrNull ?: 10
 
         // 简单策略：随机抽取指定科目/模块所有题目中指定数量
         val allQuestions = questionDao.search(
-            subject = subject,
-            section = section,
+            subject = scope.subject,
+            section = scope.section,
             limit = maxOf(questionCount * 3, questionCount)
         )
         val mockQuestions = allQuestions.shuffled().take(questionCount)
 
         return buildJsonObject {
-            put("mock_title", "MEM ${subject.uppercase()} 模拟卷")
+            put("mock_title", "MEM ${scope.subject.orEmpty().uppercase()} 模拟卷")
             put("question_count", mockQuestions.size)
             put("questions", buildJsonArray {
                 mockQuestions.forEach { q ->
@@ -454,12 +471,25 @@ class ExamToolHandler(
 
     private fun errorJson(msg: String) = """{"error":"$msg"}"""
 
-    private fun normalizeSubject(raw: String): String {
-        return when (raw.trim().lowercase()) {
-            "management_comprehensive", "management", "comprehensive", "管综", "管理类综合", "管理类综合能力",
-            "math", "logic", "writing", "数学", "逻辑", "写作" -> "management_comprehensive"
-            "english", "english2", "english_ii", "英语", "英语二" -> "english"
-            else -> raw.trim().ifBlank { "management_comprehensive" }
+    private data class ExamScope(
+        val subject: String?,
+        val section: String?
+    )
+
+    private fun normalizeExamScope(subject: String?, section: String?): ExamScope {
+        val rawSubject = subject?.trim()?.takeIf { it.isNotBlank() }
+        val explicitSection = normalizeSection(section)
+        val sectionFromSubject = normalizeSection(rawSubject)
+
+        return when (rawSubject?.lowercase()) {
+            null, "null", "all", "全部" -> ExamScope(null, explicitSection)
+            "math", "数学", "logic", "逻辑", "writing", "写作" ->
+                ExamScope("management_comprehensive", sectionFromSubject)
+            "management_comprehensive", "management", "comprehensive", "管综", "管理类综合", "管理类综合能力" ->
+                ExamScope("management_comprehensive", explicitSection)
+            "english", "english2", "english_ii", "英语", "英语二" ->
+                ExamScope("english", explicitSection)
+            else -> ExamScope(rawSubject, explicitSection)
         }
     }
 
@@ -470,6 +500,12 @@ class ExamToolHandler(
             "logic", "逻辑" -> "logic"
             "writing", "写作" -> "writing"
             "english", "英语", "english2", "english_ii", "英语二" -> "english"
+            "cloze" -> "cloze"
+            "reading_a", "reading-a", "阅读理解a" -> "reading_a"
+            "reading_b", "reading-b", "阅读理解b" -> "reading_b"
+            "translation", "翻译" -> "translation"
+            "writing_a", "writing-a", "小作文" -> "writing_a"
+            "writing_b", "writing-b", "大作文" -> "writing_b"
             else -> raw.trim()
         }
     }
