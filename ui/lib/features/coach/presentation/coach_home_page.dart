@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../../core/native/mem_coach_native_bridge.dart';
 import '../../settings/presentation/settings_page.dart';
 import '../widgets/chat_sheet.dart';
-import '../widgets/coach_shell_card.dart';
-import '../widgets/quick_action_grid.dart';
-import '../widgets/study_mission_card.dart';
 import 'practice_page.dart';
 
 /// 首页数据模型
@@ -124,28 +122,10 @@ class _CoachHomePageState extends State<CoachHomePage> {
                       child: _CoreStudyDoubleCard(data: data),
                     ),
                   ),
-                  const SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
-                      child: _ContextSectionTitle(),
-                    ),
-                  ),
-                  const SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(20, 14, 20, 0),
-                      child: StudyMissionCard(),
-                    ),
-                  ),
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-                      child: _LearningInsightPanel(data: data),
-                    ),
-                  ),
-                  const SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(20, 28, 20, 100),
-                      child: QuickActionGrid(),
+                      padding: const EdgeInsets.fromLTRB(20, 28, 20, 100),
+                      child: _MinimalUploadEntry(),
                     ),
                   ),
                 ],
@@ -387,19 +367,7 @@ class _PromptChip extends StatelessWidget {
   }
 }
 
-class _ContextSectionTitle extends StatelessWidget {
-  const _ContextSectionTitle();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 7,
-          height: 24,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary,
-      class _CoreStudyDoubleCard extends StatelessWidget {
+class _CoreStudyDoubleCard extends StatelessWidget {
   const _CoreStudyDoubleCard({required this.data});
 
   final HomeData data;
@@ -534,186 +502,154 @@ class _ContextSectionTitle extends StatelessWidget {
   }
 }
 
-class _LearningInsightPanel extends StatelessWidget {
-  const _LearningInsightPanel({required this.data});
+/// 极简上传真题入口
+class _MinimalUploadEntry extends StatefulWidget {
+  const _MinimalUploadEntry();
 
-  final HomeData data;
+  @override
+  State<_MinimalUploadEntry> createState() => _MinimalUploadEntryState();
+}
+
+class _MinimalUploadEntryState extends State<_MinimalUploadEntry> {
+  bool _isUploading = false;
 
   @override
   Widget build(BuildContext context) {
-    final total = data.totalKnowledgeCount;
-    final mastered = data.masteredCount.clamp(0, total == 0 ? data.masteredCount : total);
-    final progress = total > 0 ? mastered / total : 0.0;
-    final weakLabels = data.weakPoints
-        .map((item) => item['name']?.toString() ?? item['title']?.toString() ?? item['knowledge_name']?.toString() ?? '')
-        .where((name) => name.isNotEmpty && name != 'null')
-        .take(3)
-        .toList();
-
-    // 预估分
-    final estimatedScore = data.overallAccuracy >= 0
-        ? (130 + data.overallAccuracy * 40 + (data.todayTotal > 0 ? 6 : 0)).toInt()
-        : '--';
-
-    // 正确率
-    final accuracyText = data.todayAccuracy >= 0
-        ? '${(data.todayAccuracy * 100).toInt()}%'
-        : data.overallAccuracy >= 0
-            ? '${(data.overallAccuracy * 100).toInt()}%'
-            : '--';
-
-    final accuracyDelta = data.todayAccuracy >= 0 && data.overallAccuracy >= 0
-        ? '${((data.todayAccuracy - data.overallAccuracy) * 100).toInt()}%'
-        : '今日';
-
-    return CoachShellCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF20B486).withOpacity(0.10),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: const Icon(Icons.analytics_rounded, color: Color(0xFF20B486)),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('学情透视', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
-                    SizedBox(height: 2),
-                    Text('分析你已掌握的知识图谱与指标趋势', style: TextStyle(fontSize: 12.5, color: Colors.black54)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          
-          // 进度条
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      total > 0 ? '知识图谱节点掌握率: ${(progress * 100).toInt()}%' : '暂无知识图谱数据',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.black87),
-                    ),
-                    const SizedBox(height: 8),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: LinearProgressIndicator(
-                        value: progress.clamp(0.0, 1.0),
-                        minHeight: 8,
-                        backgroundColor: Colors.black.withOpacity(0.06),
-                        color: const Color(0xFF20B486),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Text(
-                total > 0 ? '$mastered / $total' : '0/0',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Colors.black54),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          
-          // 核心指标块
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF7F8FC),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('预估分', style: TextStyle(color: Colors.black45, fontSize: 11, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 6),
-                      Text('$estimatedScore', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 2),
-                      Text(
-                        estimatedScore is int ? '+${(estimatedScore - 130).clamp(0, 99)} 提升' : '--',
-                        style: const TextStyle(color: Color(0xFF20B486), fontSize: 10, fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF7F8FC),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('正确率', style: TextStyle(color: Colors.black45, fontSize: 11, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 6),
-                      Text(accuracyText, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 2),
-                      Text(
-                        accuracyDelta,
-                        style: const TextStyle(color: Color(0xFF5B5FEF), fontSize: 10, fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          // 薄弱点
-          if (weakLabels.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            const Text(
-              '待攻克薄弱点 (优先专项练习):',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.black87),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: weakLabels.map((name) => _WeakPointChip(name: name)).toList(),
+    return GestureDetector(
+      onTap: _isUploading ? null : () => _uploadPdf(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.03),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _isUploading
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : Icon(Icons.upload_file_rounded, color: Colors.black38, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              _isUploading ? '上传中...' : '上传真题 PDF',
+              style: const TextStyle(color: Colors.black38, fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
-}
 
-class _WeakPointChip extends StatelessWidget {
-  const _WeakPointChip({required this.name});
+  Future<void> _uploadPdf(BuildContext context) async {
+    if (_isUploading) return;
 
-  final String name;
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf'],
+      allowMultiple: false,
+    );
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF3E0),
-        borderRadius: BorderRadius.circular(999),
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    if (file.path == null) return;
+
+    // 显示科目年份选择
+    final params = await _showUploadParamsDialog(context);
+    if (params == null) return;
+
+    setState(() => _isUploading = true);
+    try {
+      final uploadResult = await MemCoachNativeBridge.uploadPdf(
+        file.path!,
+        subject: params['subject'],
+        year: params['year'],
+      );
+      if (mounted) {
+        final fileName = uploadResult['file_name']?.toString() ?? file.name;
+        final jobId = uploadResult['job_id']?.toString() ?? '';
+        final pageCount = uploadResult['page_count']?.toString() ?? '?';
+        final documentId = uploadResult['document_id']?.toString() ?? '';
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('上传成功：$fileName（$pageCount 页）'),
+            backgroundColor: const Color(0xFF20B486),
+          ),
+        );
+
+        final initialText = documentId.isNotEmpty
+            ? '请基于 PDF「$fileName」（document_id: $documentId，$pageCount 页）回答：'
+            : '请基于刚刚上传的 PDF「$fileName」（$pageCount 页）回答：';
+
+        ChatSheet.show(
+          context,
+          initialText: initialText,
+          initialStatus: 'PDF 已上传，后台解析中。',
+          initialPdfJobId: jobId.isNotEmpty ? jobId : null,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('上传失败：$e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  Future<Map<String, dynamic>?> _showUploadParamsDialog(BuildContext context) async {
+    String? selectedSubject;
+    final yearController = TextEditingController(text: DateTime.now().year.toString());
+
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('上传真题参数'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(labelText: '科目', border: OutlineInputBorder()),
+                value: selectedSubject,
+                items: const [
+                  DropdownMenuItem(value: 'logic', child: Text('逻辑')),
+                  DropdownMenuItem(value: 'writing', child: Text('写作')),
+                  DropdownMenuItem(value: 'math', child: Text('数学')),
+                  DropdownMenuItem(value: 'english', child: Text('英语')),
+                ],
+                onChanged: (value) => setState(() => selectedSubject = value),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: yearController,
+                decoration: const InputDecoration(labelText: '年份', border: OutlineInputBorder(), hintText: '例如：2024'),
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+            FilledButton(
+              onPressed: () {
+                if (selectedSubject == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请选择科目')));
+                  return;
+                }
+                final year = int.tryParse(yearController.text);
+                if (year == null || year <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入有效的年份')));
+                  return;
+                }
+                Navigator.pop(context, {'subject': selectedSubject, 'year': year});
+              },
+              child: const Text('上传'),
+            ),
+          ],
+        ),
       ),
-      child: Text(name, style: const TextStyle(fontSize: 12.5, color: Color(0xFFE65100), fontWeight: FontWeight.w700)),
     );
   }
 }
