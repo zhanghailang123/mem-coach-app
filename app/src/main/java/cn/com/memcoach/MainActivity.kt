@@ -44,18 +44,9 @@ class MainActivity : FlutterActivity() {
 
         val database = AppDatabase.getInstance(applicationContext)
         val pdfRepository = PdfDocumentRepository(applicationContext, database.pdfDocumentDao())
-        val llmConfig = defaultLlmConfig()
-        val llmClient = OpenAICompatibleAgentLlmClient(
-            baseUrl = llmConfig.baseUrl,
-            apiKey = llmConfig.apiKey,
-            defaultModel = llmConfig.defaultModel
-        )
-
-        val pipelineService = PdfPipelineService(
-            context = applicationContext,
-            questionDao = database.examQuestionDao(),
-            llmClient = llmClient
-        )
+        
+        val llmClient = MemCoachApplication.instance.llmClient
+        val pipelineService = MemCoachApplication.instance.pipelineService
 
         // 初始化记忆服务
         val memoryDir = java.io.File(applicationContext.filesDir, "memory")
@@ -173,18 +164,6 @@ class MainActivity : FlutterActivity() {
 
         database.openHelper.writableDatabase
     }
-
-    private fun defaultLlmConfig(): LlmConfig = LlmConfig(
-        baseUrl = "https://api.deepseek.com/v1",
-        apiKey = "sk-5128e904815840ebaaa819d395da66c1",
-        defaultModel = "deepseek-v4-flash"
-    )
-
-    private data class LlmConfig(
-        val baseUrl: String,
-        val apiKey: String,
-        val defaultModel: String
-    )
 
     override fun onDestroy() {
         activityScope.cancel()

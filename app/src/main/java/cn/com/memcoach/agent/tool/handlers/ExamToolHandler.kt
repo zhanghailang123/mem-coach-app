@@ -58,8 +58,13 @@ class ExamToolHandler(
   "properties": {
     "subject": {
       "type": "string",
-      "description": "科目：logic/writing/math/english",
-      "enum": ["logic", "writing", "math", "english"]
+      "description": "大科目：management_comprehensive（管综）/english（英语）",
+      "enum": ["management_comprehensive", "english"]
+    },
+    "section": {
+      "type": "string",
+      "description": "小模块：math/logic/writing/english",
+      "enum": ["math", "logic", "writing", "english"]
     },
     "topic": {
       "type": "string",
@@ -175,8 +180,13 @@ class ExamToolHandler(
   "properties": {
     "subject": {
       "type": "string",
-      "description": "科目",
-      "enum": ["logic", "writing"]
+      "description": "大科目：management_comprehensive（管综）/english（英语）",
+      "enum": ["management_comprehensive", "english"]
+    },
+    "section": {
+      "type": "string",
+      "description": "小模块：math/logic/writing/english",
+      "enum": ["math", "logic", "writing", "english"]
     },
     "question_count": {
       "type": "integer",
@@ -240,6 +250,8 @@ class ExamToolHandler(
             put("id", question.id)
             put("year", question.year)
             put("subject", question.subject)
+            putNullable("section", question.section)
+            putNullable("question_number", question.questionNumber)
             put("type", question.type)
             putNullable("topic", question.topic)
             putNullable("difficulty", question.difficulty)
@@ -250,8 +262,12 @@ class ExamToolHandler(
             put("source", buildJsonObject {
                 put("file", question.sourceFile)
                 put("page", question.sourcePage)
+                putNullable("page_type", question.sourcePageType)
                 putNullable("text", question.sourceText)
+                putNullable("answer_text", question.answerSourceText)
+                putNullable("answer_page", question.answerSourcePage)
             })
+            put("merge_status", question.mergeStatus)
             put("parse_confidence", question.parseConfidence.toDouble())
             put("parse_status", question.parseStatus)
             putNullable("parse_notes", question.parseNotes)
@@ -285,8 +301,12 @@ class ExamToolHandler(
         val question = questionDao.getById(questionId) ?: return errorJson("题目不存在: $questionId")
 
         // 按 topic 找同知识点题目，排除自身
-        val similar = questionDao.searchByTopic(question.subject, question.topic, limit + 1)
-            .filter { it.id != questionId }
+        val similar = questionDao.searchByTopic(
+            subject = question.subject,
+            topic = question.topic,
+            section = question.section,
+            limit = limit + 1
+        ).filter { it.id != questionId }
             .take(limit)
 
         return buildJsonObject {
@@ -373,12 +393,14 @@ class ExamToolHandler(
     }
 
     private suspend fun generateMock(args: JsonObject): String {
-        val subject = args["subject"]?.jsonPrimitive?.content ?: return errorJson("subject 必填")
+        val subject = normalizeSubject(args["subject"]?.jsonPrimitive?.content ?: return errorJson("subject 必填"))
+        val section = normalizeSection(args["section"]?.jsonPrimitive?.contentOrNull)
         val questionCount = args["question_count"]?.jsonPrimitive?.intOrNull ?: 10
 
-        // 简单策略：随机抽取指定科目所有题目中指定数量
+        // 简单策略：随机抽取指定科目/模块所有题目中指定数量
         val allQuestions = questionDao.search(
             subject = subject,
+            section = section,
             limit = maxOf(questionCount * 3, questionCount)
         )
         val mockQuestions = allQuestions.shuffled().take(questionCount)
@@ -391,6 +413,8 @@ class ExamToolHandler(
                     add(buildJsonObject {
                         put("id", q.id)
                         put("year", q.year)
+                        putNullable("section", q.section)
+                        putNullable("question_number", q.questionNumber)
                         put("stem", q.stem)
                         put("type", q.type)
                         putNullable("topic", q.topic)
@@ -430,6 +454,26 @@ class ExamToolHandler(
 
     private fun errorJson(msg: String) = """{"error":"$msg"}"""
 
+    private fun normalizeSubject(raw: String): String {
+        return when (raw.trim().lowercase()) {
+            "management_comprehensive", "management", "comprehensive", "管综", "管理类综合", "管理类综合能力",
+            "math", "logic", "writing", "数学", "逻辑", "写作" -> "management_comprehensive"
+            "english", "english2", "english_ii", "英语", "英语二" -> "english"
+            else -> raw.trim().ifBlank { "management_comprehensive" }
+        }
+    }
+
+    private fun normalizeSection(raw: String?): String? {
+        return when (raw?.trim()?.lowercase()) {
+            null, "", "null", "all", "全部" -> null
+            "math", "数学" -> "math"
+            "logic", "逻辑" -> "logic"
+            "writing", "写作" -> "writing"
+            "english", "英语", "english2", "english_ii", "英语二" -> "english"
+            else -> raw.trim()
+        }
+    }
+
     // 辅助构建器接口
     interface JsonObjectBuilder {
         fun put(key: String, element: JsonElement)
@@ -439,6 +483,7 @@ class ExamToolHandler(
         fun put(key: String, value: Double) = put(key, JsonPrimitive(value))
         fun put(key: String, value: Boolean) = put(key, JsonPrimitive(value))
         fun putNullable(key: String, value: String?) = put(key, value?.let { JsonPrimitive(it) } ?: JsonNull)
+        fun putNullable(key: String, value: Int?) = put(key, value?.let { JsonPrimitive(it) } ?: JsonNull)
         fun build(): JsonObject
     }
 
