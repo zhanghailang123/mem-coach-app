@@ -27,13 +27,8 @@ class MarkdownBubble extends StatelessWidget {
         crossAxisAlignment:
             isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          Align(
-            alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-            child: Container(
+          Container(
               margin: const EdgeInsets.only(bottom: 4),
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.82,
-              ),
               decoration: BoxDecoration(
                 color: isUser
                     ? const Color(0xFF5B5FEF)

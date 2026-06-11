@@ -10,7 +10,7 @@ import 'tool_activity_bar.dart';
 import 'deep_thinking_card.dart';
 import 'slash_command_panel.dart';
 import '../utils/deep_thinking_parser.dart';
-import '../utils/agent_stream_reducer.dart';
+import 'tool_call_chip.dart';
 
 /// 全屏沉浸式聊天 Sheet
 /// 借鉴 OpenOmniBot ChatBotSheet 的 DraggableScrollableSheet 设计
@@ -275,7 +275,13 @@ class _ChatSheetState extends State<ChatSheet> {
           break;
         case 'tool_call_start':
           _status = '正在调用工具：${event.toolName ?? 'unknown'}';
-          // 核心修复：确保助手消息在工具结果之前就已经存在于列表中
+          // 插入工具调用胶囊到消息列表
+          _messages.add(_ChatMessage(
+            role: _ChatRole.toolChip,
+            content: event.toolName ?? 'unknown',
+            timestamp: DateTime.now(),
+          ));
+          
           _ensureAssistantMessage();
           
           _currentTurnToolCalls.add(_ToolCallRecord(
@@ -283,7 +289,6 @@ class _ChatSheetState extends State<ChatSheet> {
             name: event.toolName ?? 'unknown',
             arguments: event.arguments ?? '{}',
           ));
-          // 同步将工具调用关联到当前的助手消息，保证历史记录顺序正确
           _attachCurrentToolCallsToLastAssistantMessage();
 
           _toolActivities.add(ToolActivity(
@@ -295,6 +300,21 @@ class _ChatSheetState extends State<ChatSheet> {
           break;
         case 'tool_call_complete':
           _status = '工具调用完成：${event.toolName ?? 'unknown'}';
+          // 更新最后一个工具胶囊，显示耗时
+          for (var i = _messages.length - 1; i >= 0; i--) {
+            if (_messages[i].role == _ChatRole.toolChip && _messages[i].content == event.toolName) {
+              final startTime = _messages[i].timestamp ?? DateTime.now();
+              final duration = DateTime.now().difference(startTime);
+              _messages[i] = _ChatMessage(
+                role: _ChatRole.toolChip,
+                content: event.toolName ?? 'unknown',
+                timestamp: startTime,
+                toolCallId: duration.inMilliseconds.toString(), // 临时存储耗时
+              );
+              break;
+            }
+          }
+          
           if (event.toolCallId != null) {
             _messages.add(_ChatMessage(
               role: _ChatRole.tool,
@@ -757,6 +777,14 @@ class _ChatSheetState extends State<ChatSheet> {
                                     final message = _messages[index];
                                     if (message.role == _ChatRole.tool) {
                                       return const SizedBox.shrink();
+                                    }
+                                    if (message.role == _ChatRole.toolChip) {
+                                      final durationMs = int.tryParse(message.toolCallId ?? '');
+                                      return ToolCallChip(
+                                        toolName: message.content,
+                                        duration: durationMs != null ? Duration(milliseconds: durationMs) : null,
+                                        isRunning: durationMs == null,
+                                      );
                                     }
                                     return _buildMessageItem(message);
                                   },
@@ -1434,7 +1462,7 @@ class _ConversationHistorySheet extends StatelessWidget {
 }
 
 /// 聊天消息角色
-enum _ChatRole { user, assistant, tool, system }
+enum _ChatRole { user, assistant, tool, system, toolChip }
 
 
 class _ToolCallRecord {
