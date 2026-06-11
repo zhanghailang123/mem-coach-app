@@ -96,23 +96,77 @@ class StudyStateMachine {
         State.MOCK -> buildMockPrompt()
     }
 
-    /** 获取当前状态允许的工具集合 */
-    fun getAllowedTools(): Set<String> {
+    /** 获取当前状态推荐的工具集合（改为推荐制，不强制限制） */
+    fun getRecommendedTools(): Set<String> {
         val pdfTools = setOf("pdf_upload", "pdf_list", "pdf_parse_status", "pdf_ocr_recognize", "pdf_query")
+        val commonTools = setOf("knowledge_search", "knowledge_node_detail")  // 通用工具始终推荐
         val stateTools = when (currentState) {
-            State.IDLE -> setOf("exam_question_search", "knowledge_search", "knowledge_node_detail", "memorize_query")
-            State.BROWSE -> setOf("exam_question_search", "exam_question_explain", "knowledge_search", "knowledge_node_detail", "knowledge_graph_expand")
+            State.IDLE -> setOf("exam_question_search", "memorize_query")
+            State.BROWSE -> setOf("exam_question_search", "exam_question_explain", "knowledge_graph_expand")
             State.PRACTICE -> setOf("exam_question_search", "exam_question_explain", "exam_answer_check", "exam_mastery_update", "exam_similar_find")
-            State.EXPLAIN -> setOf("exam_question_explain", "exam_answer_check", "exam_similar_find", "knowledge_search", "knowledge_node_detail", "knowledge_graph_expand")
-            State.EXTEND -> setOf("exam_similar_find", "exam_question_search", "knowledge_graph_expand", "knowledge_search", "exam_mock_generate")
+            State.EXPLAIN -> setOf("exam_question_explain", "exam_answer_check", "exam_similar_find", "knowledge_graph_expand")
+            State.EXTEND -> setOf("exam_similar_find", "exam_question_search", "knowledge_graph_expand", "exam_mock_generate")
             State.REVIEW -> setOf("exam_question_search", "exam_question_explain", "exam_answer_check", "exam_mastery_update", "exam_similar_find", "memorize_query", "memorize_record")
             State.MOCK -> setOf("exam_mock_generate", "exam_question_search", "exam_answer_check")
         }
-        return stateTools + pdfTools
+        return stateTools + commonTools + pdfTools
     }
 
-    /** 根据用户意图推断合适的状态 */
+    /** 获取当前状态允许的工具集合（改为返回 null，表示不限制） */
+    fun getAllowedTools(): Set<String>? {
+        // 改为返回 null，表示不限制工具（由 LLM 自主选择）
+        // 推荐工具通过 Prompt 引导，而非强制白名单
+        return null
+    }
+
+    /** 根据用户意图推断合适的状态（改用 LLM 分类，fallback 到关键词） */
+    suspend fun inferStateWithLLM(userMessage: String, llmClient: AgentLlmClient?): State {
+        // 如果没有 LLM 客户端，降级到关键词匹配
+        if (llmClient == null) {
+            return inferStateByKeywords(userMessage)
+        }
+        
+        try {
+            val prompt = """你是学习状态分类器。根据用户消息，判断学习意图并返回对应状态。
+
+可选状态：
+- IDLE: 闲聊、打招呼、没有明确学习意图
+- BROWSE: 想浏览、查看、搜索题目或知识点
+- PRACTICE: 想做题、练习、刷题
+- EXPLAIN: 想要讲解、解释某个知识点或题目
+- EXTEND: 想看变式题、相似题、关联知识
+- REVIEW: 想回顾错题、复习薄弱点
+- MOCK: 想模拟考试、模考、计时练习
+
+用户消息：「${userMessage}」
+
+请直接输出状态名称（如 PRACTICE），不要任何解释。如果不确定，输出 IDLE。"""
+
+            val result = llmClient.completeTurn(
+                messages = listOf(ChatMessage(role = "user", content = prompt)),
+                tools = null
+            )
+            
+            val stateStr = result.content.trim().uppercase()
+            return try {
+                State.valueOf(stateStr)
+            } catch (e: Exception) {
+                // LLM 输出无法解析，降级到关键词匹配
+                inferStateByKeywords(userMessage)
+            }
+        } catch (e: Exception) {
+            // LLM 调用失败，降级到关键词匹配
+            return inferStateByKeywords(userMessage)
+        }
+    }
+
+    /** 根据用户意图推断合适的状态（关键词匹配，保留兼容性） */
     fun inferState(userMessage: String): State {
+        return inferStateByKeywords(userMessage)
+    }
+    
+    /** 基于关键词的状态推断（fallback 方法） */
+    private fun inferStateByKeywords(userMessage: String): State {
         val lower = userMessage.lowercase().trim()
         return when {
             lower.contains("pdf") || lower.contains("document_id") || lower.contains("文档") -> State.BROWSE
@@ -141,6 +195,17 @@ class StudyStateMachine {
         State.EXTEND -> "\uD83D\uDD17 延伸学习"
         State.REVIEW -> "\uD83D\uDD04 错题回顾"
         State.MOCK -> "\uD83E\uDDEA 模拟考试"
+    }
+
+    /** 获取状态描述的详细文本（用于 UI 展示） */
+    fun getStateDetail(state: State = currentState): String = when (state) {
+        State.IDLE -> "等待用户指令，准备开始学习"
+        State.BROWSE -> "自由探索历年真题库"
+        State.PRACTICE -> "AI 教练引导的逐题练习"
+        State.EXPLAIN -> "深入解析题目推理链和知识点"
+        State.EXTEND -> "从当前知识点探索关联内容"
+        State.REVIEW -> "聚焦薄弱点的针对性复习"
+        State.MOCK -> "限时模拟考试实战"
     }
 
     /** 获取状态描述 */

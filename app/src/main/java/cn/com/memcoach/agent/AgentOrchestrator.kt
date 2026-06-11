@@ -116,9 +116,9 @@ class AgentOrchestrator(
         val messages = mutableListOf<ChatMessage>()
         var eventSeq = 0  // 事件序列号，用于前端去重
 
-        // ── 集成 StudyStateMachine：推断学习状态 ──
+        // ── 集成 StudyStateMachine：推断学习状态（改用 LLM） ──
         val currentState = stateMachine?.let { sm ->
-            val inferred = sm.inferState(input.userMessage)
+            val inferred = sm.inferStateWithLLM(input.userMessage, llmClient)
             sm.transition(inferred)
             send(AgentEvent.StateChanged(inferred.name, sm.getStateDisplayName(inferred)))
             inferred
@@ -208,6 +208,9 @@ class AgentOrchestrator(
         var round = 0
         var totalPromptTokens = 0
         var totalDecodeTokens = 0
+
+        // 循环检测：记录最近的工具调用
+        val recentToolCalls = mutableListOf<String>()
 
         // ─────── ReAct 主循环 ───────
         while (round < input.maxRounds) {
@@ -330,7 +333,34 @@ class AgentOrchestrator(
             val assistantMsg = accumulator.toAssistantMessage()
             messages.add(assistantMsg)
 
-            // 2. 逐个执行工具（带重试机制）
+            // 2. 循环检测：检查是否重复调用同一工具
+            val currentToolSignature = accumulator.toolCalls.joinToString("|") { 
+                "${it.name}:${it.arguments}" 
+            }
+            recentToolCalls.add(currentToolSignature)
+            
+            // 检测连续3次相同的工具调用
+            if (recentToolCalls.size >= 3) {
+                val last3 = recentToolCalls.takeLast(3)
+                if (last3.all { it == last3[0] }) {
+                    AgentTraceLogger.event(
+                        "agent_loop_detected",
+                        mapOf(
+                            "trace_id" to traceId,
+                            "round" to round,
+                            "repeated_calls" to last3[0]
+                        )
+                    )
+                    send(
+                        AgentEvent.Error(
+                            "检测到循环调用（连续3次相同工具调用），已终止推理。请换一种方式提问。"
+                        )
+                    )
+                    return@channelFlow
+                }
+            }
+
+            // 3. 逐个执行工具（带重试机制）
             for (toolCall in accumulator.toolCalls) {
                 val toolName = toolCall.name
                 val arguments = toolCall.arguments
@@ -370,15 +400,18 @@ class AgentOrchestrator(
                     try {
                         // 路由到具体 Handler 执行
                         val result = toolRouter.execute(toolName, arguments)
+                        
+                        // 验证工具返回结果
+                        val validatedResult = validateToolResult(toolName, result)
 
                         // 通知 UI：工具调用完成
-                        send(AgentEvent.ToolCallComplete(toolName, result, toolCall.id))
+                        send(AgentEvent.ToolCallComplete(toolName, validatedResult, toolCall.id))
 
                         // 3. 工具结果以 role=tool 消息回传 LLM
                         messages.add(
                             ChatMessage(
                                 role = "tool",
-                                content = result,
+                                content = validatedResult,
                                 toolCallId = toolCall.id
                             )
                         )
@@ -412,6 +445,20 @@ class AgentOrchestrator(
             // ── Self-Reflection 检查点 ──
             if (round % REFLECTION_INTERVAL == 0) {
                 send(AgentEvent.ReflectionCheck(round))
+                
+                // 注入反思提示
+                messages.add(
+                    ChatMessage(
+                        role = "user",
+                        content = """请暂停推理，进行自我反思：
+1. 当前目标是否明确？用户真正想要什么？
+2. 前面的工具调用是否合理？有没有重复或无效的调用？
+3. 当前策略是否有效？是否需要换一个角度？
+4. 如果已经调用了多次工具但没有进展，请直接告诉用户当前遇到的困难，询问是否调整方向。
+
+请基于反思结果，决定下一步行动。"""
+                    )
+                )
             }
 
             // 继续下一轮循环（LLM 根据工具结果 continue 推理）
@@ -435,7 +482,41 @@ class AgentOrchestrator(
     }.flowOn(Dispatchers.IO)
 
     /**
+     * 验证工具返回结果
+     * 确保结果格式正确，非空，便于 LLM 解析
+     */
+    private fun validateToolResult(toolName: String, result: String): String {
+        // 1. 检查空结果
+        if (result.isBlank()) {
+            return """{"error": "工具 $toolName 返回空结果", "suggestion": "请检查工具参数或尝试其他工具"}"""
+        }
+        
+        // 2. 检查结果长度（过短可能无效）
+        if (result.length < 5) {
+            return """{"warning": "工具返回结果过短", "raw_result": "$result", "suggestion": "结果可能不完整"}"""
+        }
+        
+        // 3. 尝试解析 JSON 格式（如果是 JSON）
+        if (result.trim().startsWith("{") || result.trim().startsWith("[")) {
+            try {
+                // 简单验证是否是合法 JSON（通过检查括号匹配）
+                val openBraces = result.count { it == '{' || it == '[' }
+                val closeBraces = result.count { it == '}' || it == ']' }
+                if (openBraces != closeBraces) {
+                    return """{"error": "工具返回的 JSON 格式不完整", "raw_result": "${result.take(100)}...", "suggestion": "工具实现可能有问题"}"""
+                }
+            } catch (e: Exception) {
+                // JSON 解析失败，返回原结果（可能是纯文本）
+            }
+        }
+        
+        // 4. 返回原结果
+        return result
+    }
+
+    /**
      * 记忆巩固：从对话中提取关键学习笔记、用户偏好等
+     * 已改为异步后台任务，不阻塞主流程
      */
     private suspend fun consolidateSessionMemory(messages: List<ChatMessage>) {
         val service = dailyMemoryService ?: return
@@ -474,36 +555,28 @@ class AgentOrchestrator(
     }
 
     /**
-     * 根据学习状态获取过滤后的工具定义
+     * 根据学习状态获取过滤后的工具定义（改为不过滤，返回全部工具）
      */
     private fun getFilteredToolDefinitions(currentState: StudyStateMachine.State?): List<Map<String, Any>> {
-        val allDefinitions = toolRouter.getToolDefinitions()
-        val allowedTools = currentState?.let { stateMachine?.getAllowedTools() }
-        
-        return if (allowedTools != null && allowedTools.isNotEmpty()) {
-            allDefinitions.filter { toolMap ->
-                val function = toolMap["function"] as? Map<*, *>
-                val name = function?.get("name") as? String
-                name in allowedTools
-            }
-        } else {
-            allDefinitions
-        }
+        // 不再过滤工具，返回所有可用工具
+        // 推荐工具通过 Prompt 引导，而非强制白名单
+        return toolRouter.getToolDefinitions()
     }
 
     /**
      * 构建工具使用规范文本，用于替换系统提示词中的 {{TOOLS}} 占位符。
-     *
-     * 工具定义已通过 API 的 tools 参数传入，此处只输出使用原则，避免重复浪费 token。
+     * 包含推荐工具列表和使用原则。
      */
     private fun buildToolUsageGuidelines(currentState: StudyStateMachine.State? = null): String {
-        val definitions = getFilteredToolDefinitions(currentState)
+        val definitions = toolRouter.getToolDefinitions()
         if (definitions.isEmpty()) {
             return "## 可用工具\n\n当前没有可用工具。"
         }
 
-        // 仅列出工具名称概览，具体参数由 API tools 定义
-        val toolNames = definitions.mapNotNull { toolMap ->
+        // 获取推荐工具列表
+        val recommendedTools = currentState?.let { stateMachine?.getRecommendedTools() } ?: emptySet()
+        
+        val allToolNames = definitions.mapNotNull { toolMap ->
             val function = toolMap["function"] as? Map<*, *>
             function?.get("name") as? String
         }
@@ -511,8 +584,19 @@ class AgentOrchestrator(
         val sb = StringBuilder()
         sb.appendLine("## 可用工具")
         sb.appendLine()
-        sb.appendLine("你有 ${toolNames.size} 个工具可以调用：${toolNames.joinToString("、") { "`$it`" }}。")
-        sb.appendLine("调用工具时，使用 Function Calling 格式。工具的参数和描述已通过 API 定义，请参考。")
+        sb.appendLine("你有 ${allToolNames.size} 个工具可以调用。")
+        
+        if (recommendedTools.isNotEmpty()) {
+            sb.appendLine()
+            sb.appendLine("### 当前状态推荐工具")
+            sb.appendLine("根据当前学习状态，推荐优先使用以下工具：")
+            sb.appendLine(recommendedTools.joinToString("、") { "`$it`" })
+            sb.appendLine()
+            sb.appendLine("**注意**：这只是推荐，如果用户需求需要其他工具，你可以灵活调用任何可用工具。")
+        }
+        
+        sb.appendLine()
+        sb.appendLine("工具的参数和描述已通过 API 定义，请参考。")
         sb.appendLine()
         sb.appendLine("## 工具使用原则")
         sb.appendLine("1. **先搜后答**：永远不要凭空编造题目、知识点或 PDF 内容。先用 exam_question_search、knowledge_search 或 pdf_query 获取真实数据。")
@@ -520,6 +604,7 @@ class AgentOrchestrator(
         sb.appendLine("3. **一次一个**：每次只调用一个工具，等待结果返回后再决定下一步。")
         sb.appendLine("4. **结果可溯源**：使用工具返回的数据时，标注来源（\"来自 2023 年真题第 5 题\" 或 \"来自 PDF xxx\"）。")
         sb.appendLine("5. **失败降级**：如果工具调用失败，告诉用户\"这个操作暂时不可用\"，并提供替代建议。")
+        sb.appendLine("6. **灵活选择**：根据用户实际需求选择最合适的工具，不要被推荐列表限制思路。")
 
         return sb.toString()
     }
