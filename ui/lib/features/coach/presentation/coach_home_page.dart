@@ -602,8 +602,6 @@ class _MinimalUploadEntryState extends State<_MinimalUploadEntry> {
         ChatSheet.show(
           context,
           initialText: initialText,
-          initialStatus: 'PDF 已上传，后台解析中。',
-          initialPdfJobId: jobId.isNotEmpty ? jobId : null,
         );
       }
     } catch (e) {

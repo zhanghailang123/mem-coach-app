@@ -161,7 +161,8 @@ class MemCoachChannelBridge(
     private suspend fun startAgentTurn(arguments: Map<String, Any?>): String {
         val message = arguments["message"] as? String ?: return ""
         val history = parseHistory(arguments["history"])
-        val context = buildAgentContext()
+        val pageContext = arguments["context"] as? Map<*, *>
+        val context = buildAgentContext(pageContext)
 
         currentAgentJob?.cancel()
         currentAgentJob = scope.launch {
@@ -184,7 +185,7 @@ class MemCoachChannelBridge(
      *
      * 这是「记忆」的第一层：会话内上下文。Agent 每次启动时都能看到用户的最新学习状态。
      */
-    private suspend fun buildAgentContext(): AgentPromptContext {
+    private suspend fun buildAgentContext(pageContext: Map<*, *>? = null): AgentPromptContext {
         val now = System.currentTimeMillis()
         val oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000L
 
@@ -234,14 +235,44 @@ class MemCoachChannelBridge(
         // ── 注入记忆数据 ──
         val memoryContext = buildMemoryContext()
 
+        // ── 注入页面上下文 ──
+        val pageContextPrompt = buildPageContextPrompt(pageContext)
+
         return cn.com.memcoach.agent.AgentPromptContext(
             learningContext = learningContext,
             weakPoints = weakPoints,
             memorizedItems = memorizedItems,
             conversationSummary = memoryContext,
             studyMode = "practice",
-            currentTopic = null
+            currentTopic = pageContextPrompt
         )
+    }
+
+    private fun buildPageContextPrompt(context: Map<*, *>?): String? {
+        if (context == null || context.isEmpty()) return null
+
+        return when (context["type"]) {
+            "question" -> """
+                ## 当前页面上下文
+                用户正在查看真题：${context["question_id"]}
+                - 年份：${context["year"]}
+                - 科目：${context["subject"]}
+                - 题干：${context["stem"]}
+
+                用户问你关于这道题的问题时，无需让用户重复输入题目ID，直接基于此题回答。
+            """.trimIndent()
+
+            "vocabulary" -> """
+                ## 当前页面上下文
+                用户正在查看单词：${context["word"]}
+                - 音标：${context["phonetic"]}
+                - 释义：${context["definitions"]}
+
+                用户问你关于这个单词的问题时，无需让用户重复输入单词，直接基于此单词回答。
+            """.trimIndent()
+
+            else -> null
+        }
     }
 
     /**

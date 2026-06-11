@@ -19,8 +19,6 @@ class ChatSheet extends StatefulWidget {
     super.key,
     this.conversationId,
     this.initialText,
-    this.initialStatus,
-    this.initialPdfJobId,
     this.pageContext,
   });
 
@@ -31,12 +29,6 @@ class ChatSheet extends StatefulWidget {
   /// 打开聊天框时预填到输入框的文本
   final String? initialText;
 
-  /// 打开聊天框时展示的状态提示
-  final String? initialStatus;
-
-  /// 上传 PDF 后启动的后台解析任务 ID
-  final String? initialPdfJobId;
-
   /// 页面上下文（当前题目/单词等）
   final Map<String, dynamic>? pageContext;
 
@@ -46,8 +38,6 @@ class ChatSheet extends StatefulWidget {
     BuildContext context, {
     int? conversationId,
     String? initialText,
-    String? initialStatus,
-    String? initialPdfJobId,
     Map<String, dynamic>? pageContext,
   }) {
 
@@ -58,8 +48,6 @@ class ChatSheet extends StatefulWidget {
       builder: (_) => ChatSheet(
         conversationId: conversationId,
         initialText: initialText,
-        initialStatus: initialStatus,
-        initialPdfJobId: initialPdfJobId,
         pageContext: pageContext,
       ),
 
@@ -76,8 +64,6 @@ class _ChatSheetState extends State<ChatSheet> {
   final _scrollController = ScrollController();
   final List<_ChatMessage> _messages = [];
   StreamSubscription<AgentNativeEvent>? _sub;
-  Timer? _pdfStatusTimer;
-  Timer? _pdfDismissTimer;
   String _status = '';
   bool _running = false;
 
@@ -107,15 +93,6 @@ class _ChatSheetState extends State<ChatSheet> {
   String _currentState = '';
   String _currentStateName = '';
 
-  // PDF 解析状态
-  String? _pdfJobId;
-  String _pdfParseStatus = '';
-  int _pdfParseProgress = 0;
-  int _pdfParsedQuestions = 0;
-  int _pdfInsertedQuestions = 0;
-  int _pdfDuplicateQuestions = 0;
-  List<String> _pdfParseErrors = const [];
-  
   // 斜杠命令状态
 
   bool _showSlashCommandPanel = false;
@@ -139,16 +116,7 @@ class _ChatSheetState extends State<ChatSheet> {
       _controller.text = initialText;
       _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
     }
-    final initialStatus = widget.initialStatus?.trim();
-    if (initialStatus != null && initialStatus.isNotEmpty) {
-      _status = initialStatus;
-    }
-    final initialPdfJobId = widget.initialPdfJobId?.trim();
-    if (initialPdfJobId != null && initialPdfJobId.isNotEmpty) {
-      _pdfJobId = initialPdfJobId;
-      _pdfParseStatus = 'pending';
-      _startPdfStatusPolling(initialPdfJobId);
-    }
+
     _sub = MemCoachNativeBridge.agentEvents.listen(
 
       _handleAgentEvent,
@@ -160,32 +128,9 @@ class _ChatSheetState extends State<ChatSheet> {
         });
       },
     );
-    
+
     // 初始化会话
     _initConversation();
-
-    // 自动恢复 PDF 解析进度追踪
-    if (widget.initialPdfJobId == null) {
-      _resumeActivePdfJobs();
-    }
-  }
-
-  /// 恢复正在运行的 PDF 解析任务
-  Future<void> _resumeActivePdfJobs() async {
-    try {
-      final activeJobs = await MemCoachNativeBridge.getActivePdfJobs();
-      if (!mounted) return;
-      if (activeJobs.isNotEmpty) {
-        final latestJobId = activeJobs.last;
-        setState(() {
-          _pdfJobId = latestJobId;
-          _pdfParseStatus = 'processing';
-        });
-        _startPdfStatusPolling(latestJobId);
-      }
-    } catch (e) {
-      debugPrint('恢复 PDF 任务进度失败: $e');
-    }
   }
 
   
@@ -281,59 +226,6 @@ class _ChatSheetState extends State<ChatSheet> {
         _status = '加载会话失败：$error';
       });
     }
-  }
-
-  void _startPdfStatusPolling(String jobId) {
-    _pdfStatusTimer?.cancel();
-    _pollPdfStatus(jobId);
-    _pdfStatusTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollPdfStatus(jobId));
-  }
-
-  Future<void> _pollPdfStatus(String jobId) async {
-    try {
-      final status = await MemCoachNativeBridge.getPdfParseStatus(jobId);
-      if (!mounted || _pdfJobId != jobId) return;
-      final rawErrors = status['errors'];
-      setState(() {
-        _pdfParseStatus = status['status']?.toString() ?? '';
-        _pdfParseProgress = int.tryParse(status['progress']?.toString() ?? '') ?? 0;
-        _pdfParsedQuestions = int.tryParse(status['parsed_questions']?.toString() ?? '') ?? 0;
-        _pdfInsertedQuestions = int.tryParse(status['inserted_questions']?.toString() ?? '') ?? 0;
-        _pdfDuplicateQuestions = int.tryParse(status['duplicate_questions']?.toString() ?? '') ?? 0;
-        _pdfParseErrors = rawErrors is List ? rawErrors.map((e) => e.toString()).toList() : const [];
-      });
-      if (_pdfParseStatus == 'done') {
-        _pdfStatusTimer?.cancel();
-        _pdfStatusTimer = null;
-        _schedulePdfStatusDismiss();
-      }
-    } catch (error) {
-      if (!mounted || _pdfJobId == null) return;
-      // 网络波动不停止轮询，仅记录日志
-      debugPrint('轮询 PDF 状态异常: $error');
-    }
-  }
-
-  void _schedulePdfStatusDismiss() {
-    _pdfDismissTimer?.cancel();
-    _pdfDismissTimer = Timer(const Duration(milliseconds: 5000), () {
-      if (!mounted) return;
-      setState(_clearPdfStatusCard);
-    });
-  }
-
-  void _clearPdfStatusCard() {
-    _pdfStatusTimer?.cancel();
-    _pdfStatusTimer = null;
-    _pdfDismissTimer?.cancel();
-    _pdfDismissTimer = null;
-    _pdfJobId = null;
-    _pdfParseStatus = '';
-    _pdfParseProgress = 0;
-    _pdfParsedQuestions = 0;
-    _pdfInsertedQuestions = 0;
-    _pdfDuplicateQuestions = 0;
-    _pdfParseErrors = const [];
   }
 
   void _handleAgentEvent(AgentNativeEvent event) {
@@ -531,8 +423,6 @@ class _ChatSheetState extends State<ChatSheet> {
   @override
   void dispose() {
     _sub?.cancel();
-    _pdfStatusTimer?.cancel();
-    _pdfDismissTimer?.cancel();
     _controller.dispose();
 
     _scrollController.dispose();
@@ -827,8 +717,6 @@ class _ChatSheetState extends State<ChatSheet> {
                 if (_status.isNotEmpty && !_isTransientStatus()) _buildStatusBar(),
                 // ── 工具活动条 ──
                 if (_toolActivities.isNotEmpty) _buildToolActivityBar(),
-                // ── PDF 解析状态 ──
-                if (_pdfJobId != null && _pdfParseStatus.isNotEmpty) _buildPdfParseStatusCard(),
                 // ── 斜杠命令面板 ──
 
                 if (_showSlashCommandPanel) _buildSlashCommandPanel(),
@@ -1100,110 +988,13 @@ class _ChatSheetState extends State<ChatSheet> {
   }
 
   Widget _buildPdfParseStatusCard() {
-    final isDone = _pdfParseStatus == 'done';
-    final isError = _pdfParseStatus == 'error' || _pdfParseStatus == 'not_found';
-    final label = _pdfStatusLabel(_pdfParseStatus);
-    final progress = (_pdfParseProgress.clamp(0, 100)) / 100.0;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isError ? Colors.red.shade50 : const Color(0xFFF7F8FF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isError ? Colors.red.shade100 : const Color(0xFFE1E5FF)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                isDone ? Icons.check_circle_rounded : isError ? Icons.error_rounded : Icons.picture_as_pdf_rounded,
-                size: 18,
-                color: isDone ? const Color(0xFF20B486) : isError ? Colors.red.shade600 : const Color(0xFF5B5FEF),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'PDF 解析：$label',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                ),
-              ),
-              Text(
-                '${_pdfParseProgress.clamp(0, 100)}%',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-              ),
-              if (isDone || isError) ...[
-                const SizedBox(width: 4),
-                IconButton(
-                  tooltip: '关闭',
-                  onPressed: () => setState(_clearPdfStatusCard),
-                  icon: const Icon(Icons.close_rounded, size: 16),
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-                ),
-              ],
-
-            ],
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: isError ? null : progress,
-              minHeight: 6,
-              backgroundColor: Colors.black.withOpacity(0.06),
-              color: isDone ? const Color(0xFF20B486) : const Color(0xFF5B5FEF),
-            ),
-          ),
-          if (_pdfParsedQuestions > 0 || _pdfInsertedQuestions > 0 || _pdfDuplicateQuestions > 0) ...[
-            const SizedBox(height: 8),
-            Text(
-              '已识别 $_pdfParsedQuestions 题，入库 $_pdfInsertedQuestions 题，重复 $_pdfDuplicateQuestions 题',
-              style: const TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-          ],
-          if (_pdfParseErrors.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              _pdfParseErrors.first,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: Colors.red.shade700),
-            ),
-          ],
-        ],
-      ),
-    );
+    return const SizedBox.shrink();
   }
 
   String _pdfStatusLabel(String status) {
-    switch (status) {
-      case 'pending':
-        return '等待开始';
-      case 'extracting':
-        return '提取文本';
-      case 'ocr':
-        return 'OCR 识别';
-      case 'structuring':
-        return 'AI 结构化题目';
-      case 'dedup':
-        return '去重检测';
-      case 'inserting':
-        return '写入题库';
-      case 'done':
-        return '完成';
-      case 'not_found':
-        return '任务不存在';
-      case 'error':
-        return '失败';
-      default:
-        return status.isEmpty ? '处理中' : status;
-    }
+    return status;
   }
-  
+
   Widget _buildSlashCommandPanel() {
 
     return SlashCommandPanel(

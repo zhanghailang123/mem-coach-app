@@ -1,10 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
-import '../../../core/widgets/ai_sparkle_logo.dart';
-import '../../../core/state/page_context_manager.dart';
 import '../../coach/presentation/coach_home_page.dart';
-import '../../coach/widgets/chat_sheet.dart';
 import '../../exam/presentation/exam_bank_page.dart';
 import '../../insight/presentation/insight_page.dart';
 import '../../vocabulary/presentation/vocabulary_page.dart';
@@ -73,12 +70,12 @@ class _AppShellPageState extends State<AppShellPage> {
                         curve: Curves.easeOutBack,
                         alignment: Alignment(
                           _currentIndex == 0 ? -1.0 :
-                          (_currentIndex == 1 ? -0.5 :
-                          (_currentIndex == 2 ? 0.5 : 1.0)),
+                          (_currentIndex == 1 ? -0.33 :
+                          (_currentIndex == 2 ? 0.33 : 1.0)),
                           0.0,
                         ),
                         child: FractionallySizedBox(
-                          widthFactor: 1 / 5,
+                          widthFactor: 1 / 4,
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                             child: Container(
@@ -109,10 +106,6 @@ class _AppShellPageState extends State<AppShellPage> {
                               label: '真题',
                             ),
                           ),
-                          // 留出空间给浮动 AI 按钮
-                          const Expanded(
-                            child: SizedBox(),
-                          ),
                           Expanded(
                             child: _buildTabItem(
                               index: 2,
@@ -137,62 +130,7 @@ class _AppShellPageState extends State<AppShellPage> {
               ),
             ),
           ),
-          // 悬浮在 Dock 栏上方的巨型 AI 导师圆钮
-          _buildFloatingCenterAiButton(bottomPadding),
         ],
-      ),
-    );
-  }
-
-  // 专属跨界悬浮 AI 导师圆钮
-  Widget _buildFloatingCenterAiButton(double bottomPadding) {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 34 + bottomPadding, // 向上偏移溢出
-      child: Center(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            // 直接拉起 AI 导师对话框，传递当前页面上下文
-            final pageContext = PageContextManager().currentContext;
-            ChatSheet.show(context, pageContext: pageContext);
-          },
-          child: Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF5B5FEF), Color(0xFF20B486)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white,
-                width: 2.0, // 亮白色描边
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF5B5FEF).withOpacity(0.4),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-                BoxShadow(
-                  color: const Color(0xFF20B486).withOpacity(0.15),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: const Center(
-              child: AiSparkleLogo(
-                size: 24, // 放大星簇尺寸
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
