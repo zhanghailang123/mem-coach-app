@@ -8,6 +8,10 @@ import cn.com.memcoach.data.dao.UserMasteryDao
 import cn.com.memcoach.data.entity.StudyRecord
 import cn.com.memcoach.data.entity.UserMastery
 import kotlinx.serialization.json.*
+import java.io.File
+import cn.com.memcoach.MemCoachApplication
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 真题工具处理器 —— 提供真题搜索、答案检查、相似题查找、掌握度更新、模拟卷生成等工具。
@@ -19,6 +23,10 @@ import kotlinx.serialization.json.*
  * - exam_similar_find       —— 查找与指定题目知识点相似的真题
  * - exam_mastery_update     —— 更新用户对该知识点的掌握度
  * - exam_mock_generate      —— 从题库中按约束抽取组成模拟卷
+ * - exam_favorite_add       —— 添加收藏
+ * - exam_favorite_remove    —— 移除收藏
+ * - exam_favorite_check     —— 检查收藏状态
+ * - exam_favorite_list      —— 列出收藏题目
  */
 class ExamToolHandler(
     private val questionDao: ExamQuestionDao,
@@ -32,7 +40,11 @@ class ExamToolHandler(
         "exam_answer_check",
         "exam_similar_find",
         "exam_mastery_update",
-        "exam_mock_generate"
+        "exam_mock_generate",
+        "exam_favorite_add",
+        "exam_favorite_remove",
+        "exam_favorite_check",
+        "exam_favorite_list"
     )
 
     override suspend fun execute(toolName: String, arguments: String): String {
@@ -44,6 +56,10 @@ class ExamToolHandler(
             "exam_similar_find" -> findSimilar(args)
             "exam_mastery_update" -> updateMastery(args)
             "exam_mock_generate" -> generateMock(args)
+            "exam_favorite_add" -> addFavorite(args)
+            "exam_favorite_remove" -> removeFavorite(args)
+            "exam_favorite_check" -> checkFavorite(args)
+            "exam_favorite_list" -> listFavorites(args)
             else -> """{"error":"unknown tool: $toolName"}"""
         }
     }
@@ -200,6 +216,26 @@ class ExamToolHandler(
   "required": ["subject"]
 }
 """.trimIndent()
+        ),
+        ToolDefinition(
+            name = "exam_favorite_add",
+            description = "将指定题目添加到收藏夹",
+            parameters = """{"type":"object","properties":{"question_id":{"type":"string"}},"required":["question_id"]}"""
+        ),
+        ToolDefinition(
+            name = "exam_favorite_remove",
+            description = "从收藏夹中移除指定题目",
+            parameters = """{"type":"object","properties":{"question_id":{"type":"string"}},"required":["question_id"]}"""
+        ),
+        ToolDefinition(
+            name = "exam_favorite_check",
+            description = "检查指定题目是否已被收藏",
+            parameters = """{"type":"object","properties":{"question_id":{"type":"string"}},"required":["question_id"]}"""
+        ),
+        ToolDefinition(
+            name = "exam_favorite_list",
+            description = "获取用户收藏的所有题目列表",
+            parameters = """{"type":"object","properties":{"limit":{"type":"integer"}}}"""
         )
     )
 
@@ -539,5 +575,95 @@ class ExamToolHandler(
         private val list = mutableListOf<JsonElement>()
         override fun build(): JsonArray = JsonArray(list)
         override fun add(element: JsonElement) { list.add(element) }
+    }
+
+    // ─── 收藏功能辅助实现 ───
+    private val favoritesFile by lazy {
+        File(MemCoachApplication.instance.filesDir, "exam_favorites.json")
+    }
+
+    private val favoritesLock = Any()
+
+    private fun loadFavorites(): MutableSet<String> {
+        synchronized(favoritesLock) {
+            if (!favoritesFile.exists()) return mutableSetOf()
+            return try {
+                val text = favoritesFile.readText()
+                val array = Json.parseToJsonElement(text).jsonArray
+                array.map { it.jsonPrimitive.content }.toMutableSet()
+            } catch (e: Exception) {
+                mutableSetOf()
+            }
+        }
+    }
+
+    private fun saveFavorites(favorites: Set<String>) {
+        synchronized(favoritesLock) {
+            try {
+                val array = buildJsonArray {
+                    favorites.forEach { add(it) }
+                }
+                favoritesFile.writeText(array.toString())
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun addFavorite(args: JsonObject): String {
+        val questionId = args["question_id"]?.jsonPrimitive?.contentOrNull ?: return errorJson("question_id 必填")
+        val favorites = loadFavorites()
+        favorites.add(questionId)
+        saveFavorites(favorites)
+        return """{"success":true}"""
+    }
+
+    private fun removeFavorite(args: JsonObject): String {
+        val questionId = args["question_id"]?.jsonPrimitive?.contentOrNull ?: return errorJson("question_id 必填")
+        val favorites = loadFavorites()
+        favorites.remove(questionId)
+        saveFavorites(favorites)
+        return """{"success":true}"""
+    }
+
+    private fun checkFavorite(args: JsonObject): String {
+        val questionId = args["question_id"]?.jsonPrimitive?.contentOrNull ?: return errorJson("question_id 必填")
+        val favorites = loadFavorites()
+        val isFavorited = favorites.contains(questionId)
+        return """{"favorited":$isFavorited}"""
+    }
+
+    private suspend fun listFavorites(args: JsonObject) = withContext(Dispatchers.IO) {
+        val limit = args["limit"]?.jsonPrimitive?.intOrNull ?: 50
+        val favorites = loadFavorites()
+        if (favorites.isEmpty()) {
+            return@withContext """{"count":0,"questions":[]}"""
+        }
+
+        val ids = favorites.take(limit).toList()
+        val results = questionDao.getByIds(ids)
+
+        buildJsonObject {
+            put("count", results.size)
+            put("questions", buildJsonArray {
+                results.forEach { q ->
+                    add(buildJsonObject {
+                        put("id", q.id)
+                        put("year", q.year)
+                        put("subject", q.subject)
+                        putNullable("section", q.section)
+                        putNullable("question_number", q.questionNumber)
+                        put("type", q.type)
+                        putNullable("topic", q.topic)
+                        putNullable("difficulty", q.difficulty)
+                        put("stem", q.stem)
+                        put("source_file", q.sourceFile)
+                        put("source_page", q.sourcePage)
+                        put("parse_confidence", q.parseConfidence.toDouble())
+                        put("parse_status", q.parseStatus)
+                    })
+                }
+            })
+        }.toString()
     }
 }

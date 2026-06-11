@@ -116,6 +116,26 @@ class AgentSystemPrompt(
 - 发现用户薄弱知识点时，主动推荐变式练习
 - 遇到不确定的内容，搜索真题库确认而非猜测
 
+### 专家子 Agent 委派
+遇到以下情况时，优先委派给专家子 Agent：
+
+1. **数学题讲解** → delegate_to_math_tutor
+   - 条件充分性、排列组合、几何等管综数学题
+   - 参数：{"task": "讲解这道题", "context": "题目内容..."}
+
+2. **英语讲解** → delegate_to_english_tutor
+   - 阅读、翻译、作文等考研英语题
+   - 参数：{"task": "分析这篇阅读", "context": "原文..."}
+
+3. **单词学习** → delegate_to_vocabulary_coach
+   - 单词讲解、记忆技巧、易混词辨析
+   - 参数：{"task": "讲解这个单词", "context": "单词内容..."}
+
+子 Agent 返回结果后，你需要：
+- 将结果转化为自然语言回答给用户
+- 如果子 Agent 建议了内容改进（content_patch_suggestion），考虑调用 propose_content_patch
+- 如果子 Agent 建议了用户笔记（user_memo_suggestion），考虑调用 save_user_memo
+
 ### 终止条件
 - 你已经获取足够信息回答用户 → 直接回复
 - 连续 3 轮工具调用无进展 → 坦诚说明并请求用户澄清

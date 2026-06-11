@@ -535,7 +535,7 @@ class _VocabularyPageState extends State<VocabularyPage> {
                             ),
                             const SizedBox(height: 16),
                             const Text(
-                              'AI 导师正在进行深度学术解析...',
+                              'AI 导师正在生成深度词汇笔记...',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                   fontSize: 14,
@@ -597,10 +597,17 @@ class _VocabularyPageState extends State<VocabularyPage> {
                               if (context.mounted) {
                                 if (result['success'] == true) {
                                   final alreadyExists = result['already_exists'] == true;
+                                  final aiParsed = result['ai_parsed'] == true;
+                                  final aiError = result['ai_error']?.toString();
+                                  final message = alreadyExists
+                                      ? '单词「$word」已存在于词库'
+                                      : aiParsed
+                                          ? '添加单词「$word」成功，AI 解析已生成'
+                                          : '单词「$word」已保存，但 AI 解析失败${aiError == null || aiError.isEmpty ? '' : '：$aiError'}';
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
-                                      content: Text(alreadyExists ? '单词「$word」已存在于词库' : '添加单词「$word」成功'),
-                                      backgroundColor: alreadyExists ? Colors.orange : const Color(0xFF20B486),
+                                      content: Text(message),
+                                      backgroundColor: alreadyExists || !aiParsed ? Colors.orange : const Color(0xFF20B486),
                                     ),
                                   );
                                   Navigator.pop(context);

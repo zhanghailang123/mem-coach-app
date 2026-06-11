@@ -203,25 +203,14 @@ class VocabularyToolHandler(
         var definitionsRaw = "[]"
         var explanation = "### $wordText\n暂无详细释义。"
         var tags = "[]"
+        var synonyms: String? = null
+        var confusables: String? = null
+        var aiParsed = false
+        var aiError: String? = null
 
         try {
-            val prompt = """
-                请为考研管理类联考（MEM/MBA）备考场景解析以下英文单词或短语：
-                "$wordText"
-                
-                请严格以下列 JSON 格式返回结果（不要包含任何 Markdown 标识符或额外文字）：
-                {
-                  "word": "$wordText",
-                  "phonetic": "音标，例如 /'bentʃmɑːk/",
-                  "definitions": [
-                    {"pos": "词性，如 n. 或 v.", "translation": "核心中文释义"}
-                  ],
-                  "explanation": "详细备考解析，使用 Markdown 格式。包含：1. 核心备考词义与联考真题常见用法；2. 精选 1-2 个双语例句及中文翻译；3. 记忆技巧（如词根词缀或词源/谐音联想）。",
-                  "tags": ["MEM", "词汇分级，如核心词/高频词/基础词"]
-                }
-            """.trimIndent()
-
-            val systemPrompt = "你是一个专业的 MEM/MBA 考研英语辅导名师，擅长词汇深度解析与记忆法教学。请严格输出符合格式的合法 JSON，不要用 ```json 包裹。"
+            val prompt = buildVocabularyArticlePrompt(wordText)
+            val systemPrompt = "你是 code-199 风格的考研英语词汇辅导名师，讲课风趣、直接、重实战。你必须只输出合法 JSON，不要输出 Markdown 代码块、解释文字或 YAML Frontmatter。"
 
             val messages = listOf(
                 ChatMessage(role = "system", content = systemPrompt),
@@ -230,26 +219,22 @@ class VocabularyToolHandler(
 
             val client = MemCoachApplication.instance.llmClient
             val response = client.completeTurn(messages = messages, tools = null, modelId = null)
-            var jsonStr = response.content.trim()
-
-            if (jsonStr.startsWith("```json")) {
-                jsonStr = jsonStr.removePrefix("```json").trim()
-                if (jsonStr.endsWith("```")) {
-                    jsonStr = jsonStr.removeSuffix("```").trim()
-                }
-            } else if (jsonStr.startsWith("```")) {
-                jsonStr = jsonStr.removePrefix("```").trim()
-                if (jsonStr.endsWith("```")) {
-                    jsonStr = jsonStr.removeSuffix("```").trim()
-                }
+            if (response.finishReason == "error") {
+                error(response.content)
             }
 
+            val jsonStr = extractJsonObject(response.content)
             val jsonObject = JSONObject(jsonStr)
-            phonetic = jsonObject.optString("phonetic", null)
-            definitionsRaw = jsonObject.optJSONArray("definitions")?.toString() ?: "[]"
-            explanation = jsonObject.optString("explanation", "### $wordText\n解析生成失败。")
-            tags = jsonObject.optJSONArray("tags")?.toString() ?: "[]"
+            phonetic = jsonObject.optStringOrNull("phonetic")
+            definitionsRaw = normalizeDefinitions(jsonObject.optJSONArray("definitions")).toString()
+            val generatedExplanation = jsonObject.optStringOrNull("explanation")
+            explanation = generatedExplanation ?: "### $wordText\n解析生成失败。"
+            tags = normalizeTags(jsonObject.optJSONArray("tags")).toString()
+            synonyms = normalizeWordMeaningArray(jsonObject.optJSONArray("synonyms"))?.toString()
+            confusables = normalizeWordMeaningArray(jsonObject.optJSONArray("confusables"))?.toString()
+            aiParsed = definitionsRaw != "[]" && !generatedExplanation.isNullOrBlank()
         } catch (e: Exception) {
+            aiError = e.message ?: e::class.java.simpleName
             android.util.Log.e("VocabularyToolHandler", "AI 解析单词出错", e)
         }
 
@@ -260,6 +245,8 @@ class VocabularyToolHandler(
             word = wordText,
             phonetic = phonetic,
             definitions = definitionsRaw,
+            synonyms = synonyms,
+            confusables = confusables,
             tags = tags,
             explanation = explanation
         )
@@ -270,6 +257,8 @@ class VocabularyToolHandler(
                 put("success", true)
                 put("id", vocabId)
                 put("word", wordText)
+                put("ai_parsed", aiParsed)
+                putNullable("ai_error", aiError)
             }.toString()
         } catch (e: Exception) {
             """{"error":"${e.message ?: "failed to insert"}"}"""
@@ -296,5 +285,145 @@ class VocabularyToolHandler(
 
     private fun JsonObjectBuilder.putNullable(key: String, value: String?) {
         if (value != null) put(key, value) else put(key, JsonNull)
+    }
+
+    private fun buildVocabularyArticlePrompt(wordText: String): String {
+        return """
+            请为单词或短语 "$wordText" 生成一份 code-199 风格的考研英语深度词汇笔记。
+
+            风格要求：
+            1. 像面对面辅导一样，开篇直接，语气风趣但干货密集。
+            2. 重点服务 MEM/MBA/管理类联考英语备考，直击阅读、写作、翻译中的高频用法。
+            3. explanation 字段必须是 Markdown 正文，包含以下结构：
+               - 开篇引入（一两句话，直击单词地位或常见误区）
+               - ### 一、 核心记忆锚点（Root & Logic）
+               - ### 二、 考研核心考法（The "Killer" Meaning）
+               - ### 三、 词性变体与派生词（Word Family）
+               - ### 四、 形近词/近义词辨析（Look-alikes & Synonyms）
+               - ### 五、 考研写作替换（Writing Upgrade）
+               - ### 六、 沉浸式记忆（Scenario）
+               - 结尾鼓励（一句话总结）
+            4. 在“考研核心考法”里必须给 1-2 个类似考研真题语境的英文例句、中文翻译和解析。
+            5. 在“写作替换”里必须给 Low Level vs High Level 对比。
+
+            只允许输出一个合法 JSON 对象，不要输出 YAML Frontmatter，不要输出 ```json 代码块，不要输出解释文字。
+            所有换行必须在 JSON 字符串里写成 \n 转义，不要在字符串中直接换行。
+
+            JSON 格式必须严格如下：
+            {
+              "word": "$wordText",
+              "phonetic": "IPA 音标，例如 /əˈdæpt/",
+              "definitions": [
+                {
+                  "pos": "词性，如 v.",
+                  "part": "与 pos 相同，兼容旧数据",
+                  "translation": "列表页使用的简短中文释义",
+                  "text": "更完整的英文或中文释义"
+                }
+              ],
+              "tags": ["只能从标签白名单中选择 2-4 个"],
+              "synonyms": [
+                {"word": "近义词", "meaning": "中文含义或细微差异"}
+              ],
+              "confusables": [
+                {"word": "形近词", "meaning": "中文含义或与目标词区别"}
+              ],
+              "explanation": "完整 Markdown 正文"
+            }
+
+            标签白名单：
+            阅读, 写作, 翻译, 完型, 核心词汇, 高频, 熟词僻义, 一词多义, 形近词辨析, 经济, 法律, 医学, 教育, 科技, 社会, 文化, 环境, 情感态度, 逻辑词, 写作亮点
+        """.trimIndent()
+    }
+
+    private fun extractJsonObject(raw: String): String {
+        var text = raw.trim()
+        if (text.startsWith("```")) {
+            text = text
+                .removePrefix("```json")
+                .removePrefix("```")
+                .trim()
+            if (text.endsWith("```")) {
+                text = text.removeSuffix("```").trim()
+            }
+        }
+        val start = text.indexOf('{')
+        val end = text.lastIndexOf('}')
+        require(start >= 0 && end > start) { "LLM 未返回 JSON 对象" }
+        return text.substring(start, end + 1)
+    }
+
+    private fun normalizeDefinitions(source: JSONArray?): JSONArray {
+        val result = JSONArray()
+        if (source == null) return result
+
+        for (index in 0 until source.length()) {
+            val item = source.optJSONObject(index) ?: continue
+            val pos = item.optStringOrNull("pos")
+                ?: item.optStringOrNull("part")
+                ?: item.optStringOrNull("part_of_speech")
+                ?: ""
+            val translation = item.optStringOrNull("translation")
+                ?: item.optStringOrNull("meaning")
+                ?: ""
+            val text = item.optStringOrNull("text")
+                ?: item.optStringOrNull("definition")
+                ?: translation
+            if (translation.isBlank() && text.isBlank()) continue
+
+            result.put(JSONObject().apply {
+                put("pos", pos)
+                put("part", pos)
+                put("translation", translation.ifBlank { text })
+                put("text", text)
+            })
+        }
+
+        return result
+    }
+
+    private fun normalizeTags(source: JSONArray?): JSONArray {
+        val whitelist = setOf(
+            "阅读", "写作", "翻译", "完型", "核心词汇", "高频", "熟词僻义", "一词多义", "形近词辨析",
+            "经济", "法律", "医学", "教育", "科技", "社会", "文化", "环境", "情感态度", "逻辑词", "写作亮点"
+        )
+        val result = JSONArray()
+        val seen = linkedSetOf<String>()
+        if (source != null) {
+            for (index in 0 until source.length()) {
+                val tag = source.optString(index, "").trim()
+                if (tag in whitelist) {
+                    seen.add(tag)
+                }
+            }
+        }
+        if (seen.isEmpty()) {
+            seen.add("阅读")
+            seen.add("核心词汇")
+        }
+        seen.take(4).forEach { result.put(it) }
+        return result
+    }
+
+    private fun normalizeWordMeaningArray(source: JSONArray?): JSONArray? {
+        if (source == null) return null
+        val result = JSONArray()
+        for (index in 0 until source.length()) {
+            val item = source.optJSONObject(index) ?: continue
+            val word = item.optStringOrNull("word") ?: continue
+            val meaning = item.optStringOrNull("meaning")
+                ?: item.optStringOrNull("translation")
+                ?: item.optStringOrNull("text")
+                ?: ""
+            result.put(JSONObject().apply {
+                put("word", word)
+                put("meaning", meaning)
+            })
+        }
+        return if (result.length() == 0) null else result
+    }
+
+    private fun JSONObject.optStringOrNull(key: String): String? {
+        return optString(key, "").trim().takeIf { it.isNotBlank() && it != "null" }
     }
 }

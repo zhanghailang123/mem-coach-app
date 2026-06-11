@@ -21,6 +21,11 @@ import cn.com.memcoach.agent.tool.handlers.SystemToolHandler
 import cn.com.memcoach.agent.tool.handlers.VocabularyToolHandler
 import cn.com.memcoach.agent.tool.handlers.WebSearchToolHandler
 import cn.com.memcoach.agent.tool.handlers.WrongBookToolHandler
+import cn.com.memcoach.agent.tool.handlers.UserMemoToolHandler
+import cn.com.memcoach.agent.tool.handlers.ContentPatchToolHandler
+import cn.com.memcoach.agent.tool.handlers.LearningInsightToolHandler
+import cn.com.memcoach.agent.tool.handlers.SubAgentDelegateToolHandler
+import cn.com.memcoach.agent.subagent.SubAgentRegistry
 import cn.com.memcoach.agent.tool.mcp.RemoteMcpClient
 import cn.com.memcoach.channel.MemCoachChannelBridge
 import cn.com.memcoach.channel.NativeEventSink
@@ -71,7 +76,16 @@ class MainActivity : FlutterActivity() {
             register(PDFToolHandler(pipelineService, pdfRepository, activityScope))
             register(DailyMemoryToolHandler(dailyMemoryService))
             register(LongTermMemoryToolHandler(longTermMemoryService))
-            
+
+            // Phase 2: Agent 数据管理工具
+            register(UserMemoToolHandler(database.userMemoDao()))
+            register(ContentPatchToolHandler(database.contentPatchDao()))
+            register(LearningInsightToolHandler(database.learningInsightDao()))
+
+            // Phase 3: 子 Agent 委派
+            SubAgentRegistry.registerDefaults()
+            register(SubAgentDelegateToolHandler(llmClient))
+
             // 注册通用基础工具
             register(WebSearchToolHandler())
             register(SystemToolHandler())

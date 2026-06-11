@@ -28,15 +28,40 @@ class _ExamBankPageState extends State<ExamBankPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF9FAFF),
       appBar: AppBar(
-        title: const Text('真题库'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: '按年份'),
-            Tab(text: '错题本'),
-            Tab(text: '收藏'),
-          ],
+        title: const Text(
+          '真题备考库',
+          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20),
+        ),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.black87,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                labelColor: const Color(0xFF5B5FEF),
+                unselectedLabelColor: Colors.black54,
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
+                unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13.5),
+                indicator: const UnderlineTabIndicator(
+                  borderSide: BorderSide(color: Color(0xFF5B5FEF), width: 3),
+                  insets: EdgeInsets.symmetric(horizontal: 8),
+                ),
+                tabs: const [
+                  Tab(text: '科目库'),
+                  Tab(text: '错题本'),
+                  Tab(text: '收藏本'),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
       body: TabBarView(
@@ -51,122 +76,277 @@ class _ExamBankPageState extends State<ExamBankPage>
   }
 
   Widget _buildYearlyView() {
-    return Column(
-      children: [
-        // 科目筛选
-        Container(
-          padding: const EdgeInsets.all(16),
-          child: Row(
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '备考模块',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Colors.black87),
+          ),
+          const SizedBox(height: 12),
+          // 三个科目卡片排版
+          Row(
             children: [
-              _subjectChip('数学', 'math'),
-              const SizedBox(width: 8),
-              _subjectChip('逻辑', 'logic'),
-              const SizedBox(width: 8),
-              _subjectChip('写作', 'writing'),
+              Expanded(
+                child: _buildSubjectCard(
+                  subject: 'math',
+                  title: '数学真题',
+                  subtitle: '25题/年',
+                  desc: '核心考点解析',
+                  icon: Icons.calculate_rounded,
+                  colors: [const Color(0xFF5B5FEF), const Color(0xFF8C90FF)],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildSubjectCard(
+                  subject: 'logic',
+                  title: '逻辑真题',
+                  subtitle: '30题/年',
+                  desc: '强化逻辑推理',
+                  icon: Icons.psychology_rounded,
+                  colors: [const Color(0xFF4F7BFF), const Color(0xFF4EA8DE)],
+                ),
+              ),
             ],
           ),
-        ),
-        // 年份列表 - 适配悬浮导航栏增加底部内边距
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+          const SizedBox(height: 12),
+          _buildSubjectCard(
+            subject: 'writing',
+            title: '写作真题',
+            subtitle: '2题/年',
+            desc: '论说文与论证有效性分析精练',
+            icon: Icons.edit_note_rounded,
+            colors: [const Color(0xFF20B486), const Color(0xFF06D6A0)],
+            isWide: true,
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '选择年份 (${_subjectName(_selectedSubject)})',
+                style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w900, color: Colors.black87),
+              ),
+              const Text(
+                '历年全国联考真题',
+                style: TextStyle(fontSize: 11, color: Colors.black38, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // 年份胶囊网格
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 2.1,
+            ),
             itemCount: 14,
             itemBuilder: (context, index) {
               final year = 2025 - index;
-              return _yearCard(year);
+              return _yearCapsule(year);
             },
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _subjectChip(String label, String value) {
-    final selected = _selectedSubject == value;
-    final primaryColor = Theme.of(context).primaryColor;
-    return ChoiceChip(
-      label: Text(
-        label,
-        style: TextStyle(
-          fontWeight: selected ? FontWeight.w900 : FontWeight.w500,
-          color: selected ? Colors.white : Colors.black54,
-        ),
-      ),
-      selected: selected,
-      selectedColor: primaryColor,
-      backgroundColor: const Color(0xFFF0F2FA),
-      checkmarkColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide.none,
-      ),
-      onSelected: (bool selected) {
-        if (selected) {
-          setState(() => _selectedSubject = value);
-        }
-      },
-    );
-  }
+  Widget _buildSubjectCard({
+    required String subject,
+    required String title,
+    required String subtitle,
+    required String desc,
+    required IconData icon,
+    required List<Color> colors,
+    bool isWide = false,
+  }) {
+    final isSelected = _selectedSubject == subject;
 
-  Widget _yearCard(int year) {
-    final primaryColor = Theme.of(context).primaryColor;
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      height: isWide ? 85 : 125,
       decoration: BoxDecoration(
-        color: const Color(0xFFF9FAFF),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE9ECFF)),
+        color: isSelected ? null : Colors.white,
+        gradient: isSelected
+            ? LinearGradient(
+                colors: colors,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isSelected ? Colors.transparent : const Color(0xFFE2E6F5),
+          width: 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isSelected
+                ? colors[0].withOpacity(0.22)
+                : Colors.black.withOpacity(0.015),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+      child: Material(
+        color: Colors.transparent,
         child: InkWell(
-          onTap: () => _navigateToQuestionList(year),
+          borderRadius: BorderRadius.circular(18),
+          onTap: () {
+            setState(() {
+              _selectedSubject = subject;
+            });
+          },
           child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: primaryColor.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '$year',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                        color: primaryColor,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.all(14),
+            child: isWide
+                ? Row(
                     children: [
-                      Text(
-                        '$year年真题',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.black87,
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isSelected ? Colors.white.withOpacity(0.2) : colors[0].withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(icon, color: isSelected ? Colors.white : colors[0], size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: isSelected ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              desc,
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                color: isSelected ? Colors.white70 : Colors.black38,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 4),
                       Text(
-                        _getQuestionCount(_selectedSubject),
-                        style: const TextStyle(
-                            fontSize: 13, color: Colors.black38),
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
+                          color: isSelected ? Colors.white : colors[0],
+                        ),
+                      ),
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: isSelected ? Colors.white.withOpacity(0.2) : colors[0].withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(icon, color: isSelected ? Colors.white : colors[0], size: 20),
+                          ),
+                          Text(
+                            subtitle,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: isSelected ? Colors.white70 : colors[0],
+                            ),
+                          ),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: isSelected ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            desc,
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              color: isSelected ? Colors.white70 : Colors.black38,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
                     ],
                   ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _yearCapsule(int year) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.01),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: () => _navigateToQuestionList(year),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '$year',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black87,
+                  ),
                 ),
-                Icon(Icons.chevron_right_rounded,
-                    color: primaryColor.withOpacity(0.5)),
+                const SizedBox(height: 1),
+                const Text(
+                  '年联考真题',
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Colors.black38,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
@@ -175,23 +355,9 @@ class _ExamBankPageState extends State<ExamBankPage>
     );
   }
 
-  String _getQuestionCount(String subject) {
-    switch (subject) {
-      case 'math':
-        return '25 道数学题';
-      case 'logic':
-        return '30 道逻辑题';
-      case 'writing':
-        return '2 道写作题';
-      default:
-        return '';
-    }
-  }
-
   Widget _buildWrongBookView() {
     return FutureBuilder<Map<String, dynamic>>(
-      future:
-          MemCoachNativeBridge.callAgentTool('wrong_book_list', {'limit': 50}),
+      future: MemCoachNativeBridge.callAgentTool('wrong_book_list', {'limit': 50}),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
@@ -199,10 +365,18 @@ class _ExamBankPageState extends State<ExamBankPage>
 
         final items = (snapshot.data?['items'] as List?) ?? [];
         if (items.isEmpty) {
-          return const Center(child: Text('暂无错题'));
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                Icon(Icons.assignment_turned_in_outlined, size: 44, color: Colors.black12),
+                SizedBox(height: 12),
+                Text('暂无错题记录，继续保持！', style: TextStyle(color: Colors.black38, fontSize: 13)),
+              ],
+            ),
+          );
         }
 
-        // 错题列表 - 适配悬浮导航栏增加底部内边距
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           itemCount: items.length,
@@ -219,12 +393,19 @@ class _ExamBankPageState extends State<ExamBankPage>
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF9FA),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFFFE9EC)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFFFE9EC), width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFEF476F).withOpacity(0.015),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         child: InkWell(
           onTap: () => _navigateToQuestionDetail(item['question_id']),
           child: Padding(
@@ -236,10 +417,9 @@ class _ExamBankPageState extends State<ExamBankPage>
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEF476F).withOpacity(0.1),
+                        color: const Color(0xFFEF476F).withOpacity(0.08),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -251,10 +431,10 @@ class _ExamBankPageState extends State<ExamBankPage>
                         ),
                       ),
                     ),
-                    Icon(
+                    const Icon(
                       Icons.arrow_forward_rounded,
                       size: 16,
-                      color: const Color(0xFFEF476F).withOpacity(0.5),
+                      color: Color(0xFFEF476F),
                     ),
                   ],
                 ),
@@ -263,7 +443,7 @@ class _ExamBankPageState extends State<ExamBankPage>
                   data: item['stem']?.toString() ?? '',
                   maxLines: 2,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 13.5,
                     height: 1.5,
                     color: Colors.black87,
                     fontWeight: FontWeight.w600,
@@ -278,54 +458,234 @@ class _ExamBankPageState extends State<ExamBankPage>
   }
 
   Widget _buildFavoriteView() {
-    return const Center(child: Text('收藏功能待实现'));
+    return FutureBuilder<Map<String, dynamic>>(
+      future: MemCoachNativeBridge.callAgentTool('exam_favorite_list', {'limit': 100}),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final questions = (snapshot.data?['questions'] as List?) ?? [];
+        if (questions.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                Icon(Icons.star_border_rounded, size: 48, color: Colors.black12),
+                SizedBox(height: 12),
+                Text(
+                  '暂无收藏题目',
+                  style: TextStyle(color: Colors.black38, fontSize: 13.5),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+          itemCount: questions.length,
+          itemBuilder: (context, index) {
+            final q = questions[index];
+            return _favoriteQuestionCard(q);
+          },
+        );
+      },
+    );
   }
 
-  void _navigateToQuestionList(int year) {
-    Navigator.push(
+  Widget _favoriteQuestionCard(Map<String, dynamic> q) {
+    final section = _sectionName(q['section']?.toString());
+    final year = q['year']?.toString();
+    final number = q['question_number']?.toString();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.015),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: () => _navigateToQuestionDetail(q['id']),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF5B5FEF).withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '$year年 · $section · 第$number题',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF5B5FEF),
+                        ),
+                      ),
+                    ),
+                    const Icon(
+                      Icons.arrow_forward_rounded,
+                      size: 16,
+                      color: Color(0xFF5B5FEF),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                MarkdownMathPreview(
+                  data: q['stem']?.toString() ?? '',
+                  maxLines: 2,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    height: 1.5,
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _navigateToQuestionList(int year) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => QuestionListPage(year: year, subject: _selectedSubject),
       ),
     );
+    if (mounted) {
+      setState(() {});
+    }
   }
 
-  void _navigateToQuestionDetail(String questionId) {
-    Navigator.push(
+  void _navigateToQuestionDetail(String questionId) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => QuestionDetailPage(questionId: questionId),
       ),
     );
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  String _subjectName(String subject) {
+    switch (subject) {
+      case 'math': return '数学';
+      case 'logic': return '逻辑';
+      case 'writing': return '写作';
+      default: return subject;
+    }
+  }
+
+  String _sectionName(String? section) {
+    switch (section) {
+      case 'math': return '数学';
+      case 'logic': return '逻辑';
+      case 'writing': return '写作';
+      case 'english': return '英语';
+      default: return section ?? '';
+    }
   }
 }
 
 /// 题目列表页
-class QuestionListPage extends StatelessWidget {
+class QuestionListPage extends StatefulWidget {
   final int year;
   final String subject;
 
-  const QuestionListPage(
-      {super.key, required this.year, required this.subject});
+  const QuestionListPage({
+    super.key,
+    required this.year,
+    required this.subject,
+  });
+
+  @override
+  State<QuestionListPage> createState() => _QuestionListPageState();
+}
+
+class _QuestionListPageState extends State<QuestionListPage> {
+  bool _transitionEnded = false;
+  late final Future<Map<String, dynamic>> _fetchFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchFuture = MemCoachNativeBridge.callAgentTool('exam_question_search', {
+      'subject': 'management_comprehensive',
+      'section': widget.subject,
+      'year': widget.year,
+      'limit': 100,
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && route.animation != null) {
+        void listener(AnimationStatus status) {
+          if (status == AnimationStatus.completed) {
+            route.animation!.removeStatusListener(listener);
+            if (mounted) {
+              setState(() {
+                _transitionEnded = true;
+              });
+            }
+          }
+        }
+        if (route.animation!.isCompleted) {
+          setState(() {
+            _transitionEnded = true;
+          });
+        } else {
+          route.animation!.addStatusListener(listener);
+        }
+      } else {
+        setState(() {
+          _transitionEnded = true;
+        });
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).primaryColor;
     return Scaffold(
-      appBar: AppBar(title: Text('$year年${_subjectName(subject)}')),
+      backgroundColor: const Color(0xFFF9FAFF),
+      appBar: AppBar(
+        title: Text('${widget.year}年${_subjectName(widget.subject)}'),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.black87,
+      ),
       body: FutureBuilder<Map<String, dynamic>>(
-        future: MemCoachNativeBridge.callAgentTool('exam_question_search', {
-          'subject': 'management_comprehensive',
-          'section': subject,
-          'year': year,
-          'limit': 100,
-        }),
+        future: _fetchFuture,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return _messageState('加载真题失败', snapshot.error.toString());
           }
 
-          if (!snapshot.hasData) {
+          if (!snapshot.hasData || !_transitionEnded) {
             return const Center(child: CircularProgressIndicator());
           }
 
@@ -347,19 +707,25 @@ class QuestionListPage extends StatelessWidget {
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF9FAFF),
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFFE9ECFF)),
+                  border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.015),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(18),
                   child: InkWell(
-                    onTap: () {
-                      Navigator.push(
+                    onTap: () async {
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) =>
-                              QuestionDetailPage(questionId: q['id']),
+                          builder: (_) => QuestionDetailPage(questionId: q['id']),
                         ),
                       );
                     },
@@ -371,16 +737,16 @@ class QuestionListPage extends StatelessWidget {
                             width: 38,
                             height: 38,
                             decoration: BoxDecoration(
-                              color: primaryColor.withOpacity(0.08),
+                              color: const Color(0xFF5B5FEF).withOpacity(0.08),
                               shape: BoxShape.circle,
                             ),
                             child: Center(
                               child: Text(
                                 '${index + 1}',
-                                style: TextStyle(
+                                style: const TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w900,
-                                  color: primaryColor,
+                                  color: Color(0xFF5B5FEF),
                                 ),
                               ),
                             ),
@@ -391,7 +757,7 @@ class QuestionListPage extends StatelessWidget {
                               data: q['stem']?.toString() ?? '',
                               maxLines: 2,
                               style: const TextStyle(
-                                fontSize: 14,
+                                fontSize: 13.5,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.black87,
                                 height: 1.4,
@@ -399,8 +765,7 @@ class QuestionListPage extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Icon(Icons.chevron_right_rounded,
-                              color: primaryColor.withOpacity(0.5)),
+                          const Icon(Icons.chevron_right_rounded, color: Colors.black38),
                         ],
                       ),
                     ),
@@ -421,22 +786,17 @@ class QuestionListPage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.info_outline_rounded,
-                size: 34, color: Colors.black38),
+            const Icon(Icons.info_outline_rounded, size: 34, color: Colors.black38),
             const SizedBox(height: 12),
             Text(
               title,
-              style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.black87),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black87),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               message,
-              style: const TextStyle(
-                  fontSize: 13.5, height: 1.5, color: Colors.black45),
+              style: const TextStyle(fontSize: 13.5, height: 1.5, color: Colors.black45),
               textAlign: TextAlign.center,
             ),
           ],
@@ -473,6 +833,8 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
   String? _selectedAnswer;
   bool _showAnswer = false;
   bool _submitting = false;
+  bool _isFavorited = false; // 是否已收藏
+  bool _transitionEnded = false; // 转场动画是否结束
   late final Future<Map<String, dynamic>> _questionFuture;
 
   @override
@@ -482,13 +844,102 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
         MemCoachNativeBridge.callAgentTool('exam_question_explain', {
       'question_id': widget.questionId,
     });
+    _checkFavoriteStatus();
+    _setupAnimationListener();
+  }
+
+  void _checkFavoriteStatus() async {
+    try {
+      final res = await MemCoachNativeBridge.callAgentTool('exam_favorite_check', {
+        'question_id': widget.questionId,
+      });
+      if (mounted && res['favorited'] != null) {
+        setState(() {
+          _isFavorited = res['favorited'] == true;
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _setupAnimationListener() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && route.animation != null) {
+        void listener(AnimationStatus status) {
+          if (status == AnimationStatus.completed) {
+            route.animation!.removeStatusListener(listener);
+            if (mounted) {
+              setState(() {
+                _transitionEnded = true;
+              });
+            }
+          }
+        }
+        if (route.animation!.isCompleted) {
+          setState(() {
+            _transitionEnded = true;
+          });
+        } else {
+          route.animation!.addStatusListener(listener);
+        }
+      } else {
+        setState(() {
+          _transitionEnded = true;
+        });
+      }
+    });
+  }
+
+  Future<void> _toggleFavorite() async {
+    try {
+      final tool = _isFavorited ? 'exam_favorite_remove' : 'exam_favorite_add';
+      final res = await MemCoachNativeBridge.callAgentTool(tool, {
+        'question_id': widget.questionId,
+      });
+      if (res['success'] == true) {
+        setState(() {
+          _isFavorited = !_isFavorited;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_isFavorited ? '已加入收藏' : '已取消收藏'),
+              duration: const Duration(seconds: 1),
+              backgroundColor: _isFavorited ? const Color(0xFF5B5FEF) : Colors.black87,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('操作失败: $e')),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF9FAFF),
       appBar: AppBar(
-        title: const Text('题目详情'),
+        title: const Text('题目详情', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.black87,
+        actions: [
+          IconButton(
+            icon: Icon(
+              _isFavorited ? Icons.star_rounded : Icons.star_border_rounded,
+              color: _isFavorited ? const Color(0xFFFFD166) : Colors.black54,
+              size: 24,
+            ),
+            onPressed: _toggleFavorite,
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: FutureBuilder<Map<String, dynamic>>(
         future: _questionFuture,
@@ -497,7 +948,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
             return _messageState('加载题目失败', snapshot.error.toString());
           }
 
-          if (!snapshot.hasData) {
+          if (!snapshot.hasData || !_transitionEnded) {
             return const Center(child: CircularProgressIndicator());
           }
 
