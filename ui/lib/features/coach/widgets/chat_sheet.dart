@@ -21,6 +21,7 @@ class ChatSheet extends StatefulWidget {
     this.initialText,
     this.initialStatus,
     this.initialPdfJobId,
+    this.pageContext,
   });
 
 
@@ -36,6 +37,9 @@ class ChatSheet extends StatefulWidget {
   /// 上传 PDF 后启动的后台解析任务 ID
   final String? initialPdfJobId;
 
+  /// 页面上下文（当前题目/单词等）
+  final Map<String, dynamic>? pageContext;
+
   /// 打开全屏聊天 Sheet
 
   static Future<void> show(
@@ -44,6 +48,7 @@ class ChatSheet extends StatefulWidget {
     String? initialText,
     String? initialStatus,
     String? initialPdfJobId,
+    Map<String, dynamic>? pageContext,
   }) {
 
     return showModalBottomSheet<void>(
@@ -55,6 +60,7 @@ class ChatSheet extends StatefulWidget {
         initialText: initialText,
         initialStatus: initialStatus,
         initialPdfJobId: initialPdfJobId,
+        pageContext: pageContext,
       ),
 
     );
@@ -630,6 +636,7 @@ class _ChatSheetState extends State<ChatSheet> {
       await MemCoachNativeBridge.startAgentTurn(
         message: text,
         history: history,
+        context: widget.pageContext ?? {},
       );
 
     } catch (error) {

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../core/native/mem_coach_native_bridge.dart';
 import '../../../core/widgets/markdown_math.dart';
+import '../../../core/state/page_context_manager.dart';
 import '../../coach/widgets/coach_shell_card.dart';
 
 /// 真题库页面
@@ -846,6 +847,25 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
     });
     _checkFavoriteStatus();
     _setupAnimationListener();
+    _setupPageContext();
+  }
+
+  void _setupPageContext() async {
+    final data = await _questionFuture;
+    PageContextManager().setContext({
+      'type': 'question',
+      'question_id': widget.questionId,
+      'stem': data['stem'],
+      'year': data['year'],
+      'subject': data['subject'],
+      'section': data['section'],
+    });
+  }
+
+  @override
+  void dispose() {
+    PageContextManager().clearContext();
+    super.dispose();
   }
 
   void _checkFavoriteStatus() async {

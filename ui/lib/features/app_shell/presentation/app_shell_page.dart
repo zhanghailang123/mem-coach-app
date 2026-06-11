@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../../core/widgets/ai_sparkle_logo.dart';
+import '../../../core/state/page_context_manager.dart';
 import '../../coach/presentation/coach_home_page.dart';
 import '../../coach/widgets/chat_sheet.dart';
 import '../../exam/presentation/exam_bank_page.dart';
@@ -153,8 +154,9 @@ class _AppShellPageState extends State<AppShellPage> {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () {
-            // 直接拉起 AI 导师对话框
-            ChatSheet.show(context);
+            // 直接拉起 AI 导师对话框，传递当前页面上下文
+            final pageContext = PageContextManager().currentContext;
+            ChatSheet.show(context, pageContext: pageContext);
           },
           child: Container(
             width: 54,

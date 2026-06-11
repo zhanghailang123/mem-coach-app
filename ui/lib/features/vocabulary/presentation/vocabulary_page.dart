@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../core/native/mem_coach_native_bridge.dart';
 import '../../../core/widgets/markdown_math.dart';
+import '../../../core/state/page_context_manager.dart';
 
 /// 单词本主页面（单页搜索 + 状态过滤设计）
 class VocabularyPage extends StatefulWidget {
@@ -484,12 +485,26 @@ class _VocabularyPageState extends State<VocabularyPage> {
 
   // 导航到详情页，如果状态改变返回，则刷新数据
   void _navigateToDetail(String wordId) async {
+    // 获取单词数据并设置页面上下文
+    final detail = await MemCoachNativeBridge.callAgentTool('vocabulary_detail', {'word_id': wordId});
+    PageContextManager().setContext({
+      'type': 'vocabulary',
+      'word_id': wordId,
+      'word': detail['word'],
+      'definitions': detail['definitions'],
+      'phonetic': detail['phonetic'],
+    });
+
     final needRefresh = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => VocabularyDetailPage(wordId: wordId),
       ),
     );
+
+    // 离开详情页后清除上下文
+    PageContextManager().clearContext();
+
     if (needRefresh == true) {
       _triggerRefresh();
     }
