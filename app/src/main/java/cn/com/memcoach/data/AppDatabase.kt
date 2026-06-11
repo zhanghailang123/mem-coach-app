@@ -35,7 +35,8 @@ import cn.com.memcoach.data.entity.*
         ConversationEntity::class,
         ChatMessageEntity::class
     ],
-    version = 5,
+    version = 7,
+
 
     exportSchema = false  // MVP 阶段不导出 schema，后续可开启
 )
@@ -153,7 +154,39 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         /**
+         * 从版本 5 升级到版本 6 的 Migration。
+         *
+         * 将 MEM 科目模型调整为 subject 大科目 + section 小模块，并补充题号、页类型和答案页合并状态。
+         */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `exam_questions` ADD COLUMN `section` TEXT")
+                database.execSQL("ALTER TABLE `exam_questions` ADD COLUMN `question_number` INTEGER")
+                database.execSQL("ALTER TABLE `exam_questions` ADD COLUMN `source_page_type` TEXT")
+                database.execSQL("ALTER TABLE `exam_questions` ADD COLUMN `answer_source_text` TEXT")
+                database.execSQL("ALTER TABLE `exam_questions` ADD COLUMN `answer_source_page` INTEGER")
+                database.execSQL("ALTER TABLE `exam_questions` ADD COLUMN `merge_status` TEXT NOT NULL DEFAULT 'question_only'")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_questions_section` ON `exam_questions` (`section`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_questions_question_number` ON `exam_questions` (`question_number`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_questions_merge_status` ON `exam_questions` (`merge_status`)")
+            }
+        }
+
+        /**
+         * 从版本 6 升级到版本 7 的 Migration。
+         *
+         * 为 PDF 真题统一管理增加来源文档 ID，支持按导入 PDF 查询和联动删除题目。
+         */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `exam_questions` ADD COLUMN `source_document_id` TEXT")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_questions_source_document_id` ON `exam_questions` (`source_document_id`)")
+            }
+        }
+
+        /**
          * 获取数据库单例
+
 
          *
          * @param context Application Context
@@ -171,10 +204,8 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 DATABASE_NAME
             )
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
-
-                // MVP 阶段使用 destructive migration 作为兜底，开发中重建数据库
-                // 正式发布后改用 Migration 策略
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addCallback(DatabasePreloader(context))
                 .fallbackToDestructiveMigration()
                 .build()
         }

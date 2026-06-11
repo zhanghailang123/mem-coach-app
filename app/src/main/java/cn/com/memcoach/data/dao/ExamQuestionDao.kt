@@ -23,6 +23,7 @@ interface ExamQuestionDao {
     @Query("""
         SELECT * FROM exam_questions 
         WHERE subject = :subject 
+          AND (:section IS NULL OR section = :section)
           AND (:topic IS NULL OR topic = :topic)
           AND parse_status = 'parsed'
           AND parse_confidence >= :minConfidence
@@ -32,6 +33,7 @@ interface ExamQuestionDao {
     suspend fun searchByTopic(
         subject: String,
         topic: String? = null,
+        section: String? = null,
         limit: Int = 5,
         minConfidence: Float = 0.6f
     ): List<ExamQuestion>
@@ -40,16 +42,24 @@ interface ExamQuestionDao {
     @Query("""
         SELECT * FROM exam_questions 
         WHERE year = :year AND subject = :subject
+          AND (:section IS NULL OR section = :section)
           AND parse_status = 'parsed'
           AND parse_confidence >= :minConfidence
         ORDER BY id ASC
     """)
-    suspend fun getByYearAndSubject(year: Int, subject: String, minConfidence: Float = 0.6f): List<ExamQuestion>
+    suspend fun getByYearAndSubject(
+        year: Int,
+        subject: String,
+        section: String? = null,
+        minConfidence: Float = 0.6f
+    ): List<ExamQuestion>
 
     /** 多维搜索（默认只返回可直接练习的高质量题） */
     @Query("""
         SELECT * FROM exam_questions 
         WHERE (:subject IS NULL OR subject = :subject)
+          AND (:section IS NULL OR section = :section)
+          AND (:questionNumber IS NULL OR question_number = :questionNumber)
           AND (:chapter IS NULL OR chapter = :chapter)
           AND (:topic IS NULL OR topic = :topic)
           AND (:type IS NULL OR type = :type)
@@ -62,6 +72,8 @@ interface ExamQuestionDao {
     """)
     suspend fun search(
         subject: String? = null,
+        section: String? = null,
+        questionNumber: Int? = null,
         chapter: String? = null,
         topic: String? = null,
         type: String? = null,
@@ -92,7 +104,36 @@ interface ExamQuestionDao {
     @Query("SELECT * FROM exam_questions WHERE id IN (:ids)")
     suspend fun getByIds(ids: List<String>): List<ExamQuestion>
 
+    /** 按来源 PDF 文档 ID 获取题目 */
+    @Query("""
+        SELECT * FROM exam_questions
+        WHERE source_document_id = :documentId
+        ORDER BY question_number ASC, source_page ASC, id ASC
+    """)
+    suspend fun getBySourceDocumentId(documentId: String): List<ExamQuestion>
+
+    /** 按来源 PDF 文件名获取旧数据题目 */
+    @Query("""
+        SELECT * FROM exam_questions
+        WHERE source_file = :sourceFile
+        ORDER BY question_number ASC, source_page ASC, id ASC
+    """)
+    suspend fun getBySourceFile(sourceFile: String): List<ExamQuestion>
+
+    /** 统计来源 PDF 文档 ID 下的题目数量 */
+    @Query("SELECT COUNT(*) FROM exam_questions WHERE source_document_id = :documentId")
+    suspend fun countBySourceDocumentId(documentId: String): Int
+
+    /** 删除来源 PDF 文档 ID 下的题目 */
+    @Query("DELETE FROM exam_questions WHERE source_document_id = :documentId")
+    suspend fun deleteBySourceDocumentId(documentId: String): Int
+
+    /** 删除指定来源 PDF 文件名下的旧数据题目 */
+    @Query("DELETE FROM exam_questions WHERE source_file = :sourceFile")
+    suspend fun deleteBySourceFile(sourceFile: String): Int
+
     /** 根据题干检查是否已存在（兼容旧数据去重） */
+
     @Query("SELECT COUNT(*) FROM exam_questions WHERE stem = :stem AND subject = :subject")
     suspend fun countByStemAndSubject(stem: String, subject: String): Int
 
