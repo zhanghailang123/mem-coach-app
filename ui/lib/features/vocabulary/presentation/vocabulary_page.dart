@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../core/native/mem_coach_native_bridge.dart';
 import '../../../core/widgets/markdown_math.dart';
 import '../../../core/state/page_context_manager.dart';
+import '../../../core/widgets/ai_sparkle_logo.dart';
+import '../../coach/widgets/chat_sheet.dart';
 
 /// 单词本主页面（单页搜索 + 状态过滤设计）
 class VocabularyPage extends StatefulWidget {
@@ -728,6 +730,7 @@ class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.black87,
       ),
+      floatingActionButton: _buildFloatingAiButton(),
       body: FutureBuilder<Map<String, dynamic>>(
         future: _detailFuture,
         builder: (context, snapshot) {
@@ -878,5 +881,21 @@ class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
       );
       Navigator.pop(context, true); // 返回 true 通知列表刷新
     }
+  }
+
+  Widget _buildFloatingAiButton() {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    return Positioned(
+      right: 16,
+      bottom: 16 + bottomPadding,
+      child: FloatingActionButton(
+        onPressed: () {
+          final pageContext = PageContextManager().currentContext;
+          ChatSheet.show(context, pageContext: pageContext);
+        },
+        backgroundColor: const Color(0xFF5B5FEF),
+        child: const AiSparkleLogo(size: 24, color: Colors.white),
+      ),
+    );
   }
 }
