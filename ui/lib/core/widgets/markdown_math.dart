@@ -6,7 +6,7 @@ import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:markdown/markdown.dart' as md;
 
 const _latexCommandPattern =
-    r'(frac|sqrt|angle|triangle|Delta|theta|pi|times|cdot|circ|text|left|right|begin|end|sum|int|le|ge|neq|infty|overline|vec|sin|cos|tan|log|ln|max|min|pm|mp|approx|alpha|beta|gamma|lambda|mu|rho|varphi|phi|frown|overset)';
+    r'(frac|sqrt|angle|triangle|Delta|theta|pi|times|cdot|circ|text|left|right|begin|end|sum|int|le|leq|ge|geq|neq|ne|infty|overline|overrightarrow|vec|bar|sin|cos|tan|log|ln|max|min|pm|mp|approx|alpha|beta|gamma|sigma|lambda|mu|rho|varphi|phi|frown|overset|rightarrow|Rightarrow|leftrightarrow|Leftrightarrow|xrightarrow|implies|to|neg|not|land|lor|wedge|vee|cap|cup|in|notin|subseteq|forall|exists|emptyset|perp|equiv|sim|iff|vdash|pmod|quad|cdot|cdots|dots|ldots|div|underbrace|oplus|lbrace|rbrace|hline)';
 
 final _latexCommandRe = RegExp(r'\\' + _latexCommandPattern + r'\b');
 final _mathOperatorRe = RegExp(r'[=<>^_{}|+*/]');
@@ -14,6 +14,10 @@ final _geometryLabelRe = RegExp(r"^[A-Z][A-Z0-9']{0,4}$");
 final _doubleEscapedLatexCommandRe =
     RegExp(r'\\\\' + _latexCommandPattern + r'\b');
 final _fencedCodeBlockRe = RegExp(r'(```[\s\S]*?```|~~~[\s\S]*?~~~)');
+final _cjkTextRe = RegExp(r'[\u3400-\u9FFF]');
+final _htmlTagRe = RegExp(r'<[^>]+>');
+final _lineBreakHtmlRe = RegExp(r'<br\s*/?>', caseSensitive: false);
+final _imgHtmlRe = RegExp(r'<img\b[^>]*>', caseSensitive: false);
 
 /// Markdown + LaTeX renderer shared by exam pages and chat bubbles.
 class MarkdownMathView extends StatelessWidget {
@@ -73,6 +77,45 @@ class MarkdownMathView extends StatelessWidget {
         ),
       },
       styleSheet: effectiveStyleSheet,
+    );
+  }
+}
+
+/// Compact inline Markdown/LaTeX preview for list rows.
+class MarkdownMathPreview extends StatelessWidget {
+  const MarkdownMathPreview({
+    super.key,
+    required this.data,
+    this.maxLines = 2,
+    this.overflow = TextOverflow.ellipsis,
+    this.style,
+    this.mathColor,
+  });
+
+  final String data;
+  final int maxLines;
+  final TextOverflow overflow;
+  final TextStyle? style;
+  final Color? mathColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final defaultStyle = DefaultTextStyle.of(context).style;
+    final effectiveStyle = defaultStyle.merge(style);
+    final effectiveMathColor =
+        mathColor ?? Theme.of(context).colorScheme.primary;
+
+    return RichText(
+      maxLines: maxLines,
+      overflow: overflow,
+      text: TextSpan(
+        style: effectiveStyle,
+        children: _buildPreviewSpans(
+          data,
+          textStyle: effectiveStyle,
+          mathColor: effectiveMathColor,
+        ),
+      ),
     );
   }
 }
@@ -177,6 +220,100 @@ MarkdownStyleSheet examMarkdownStyleSheet(
   );
 }
 
+List<InlineSpan> _buildPreviewSpans(
+  String input, {
+  required TextStyle textStyle,
+  required Color mathColor,
+}) {
+  final normalized = normalizeMarkdownMath(input);
+  final spans = <InlineSpan>[];
+  final mathPattern = RegExp(
+    r'\$\$([\s\S]+?)\$\$|(^|[^\\])\$(?!\$)([^\n$]+?)\$',
+  );
+  var cursor = 0;
+
+  for (final match in mathPattern.allMatches(normalized)) {
+    final isBlockMath = match.group(1) != null;
+    final prefix = isBlockMath ? '' : (match.group(2) ?? '');
+    final formulaStart =
+        isBlockMath ? match.start : match.start + prefix.length;
+
+    _appendPreviewText(
+      spans,
+      normalized.substring(cursor, formulaStart),
+      textStyle,
+    );
+
+    final formula = (isBlockMath ? match.group(1) : match.group(3))?.trim();
+    if (formula != null && formula.isNotEmpty) {
+      spans.add(_previewMathSpan(formula, textStyle, mathColor));
+    }
+
+    cursor = match.end;
+  }
+
+  _appendPreviewText(spans, normalized.substring(cursor), textStyle);
+
+  if (spans.isEmpty) {
+    spans.add(TextSpan(text: _cleanPreviewText(normalized), style: textStyle));
+  }
+  return spans;
+}
+
+void _appendPreviewText(
+  List<InlineSpan> spans,
+  String rawText,
+  TextStyle textStyle,
+) {
+  final text = _cleanPreviewText(rawText);
+  if (text.isEmpty) return;
+  spans.add(TextSpan(text: text, style: textStyle));
+}
+
+InlineSpan _previewMathSpan(
+  String formula,
+  TextStyle textStyle,
+  Color mathColor,
+) {
+  final fontSize = textStyle.fontSize ?? 14;
+  return WidgetSpan(
+    alignment: PlaceholderAlignment.middle,
+    child: Math.tex(
+      formula,
+      mathStyle: MathStyle.text,
+      textStyle: textStyle.copyWith(
+        color: mathColor,
+        fontSize: fontSize,
+        height: 1.2,
+      ),
+      onErrorFallback: (_) => Text(
+        formula,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: textStyle.copyWith(color: mathColor),
+      ),
+    ),
+  );
+}
+
+String _cleanPreviewText(String text) {
+  var output = text
+      .replaceAll(RegExp(r'!\[[^\]]*\]\([^)]+\)'), '')
+      .replaceAll(_lineBreakHtmlRe, ' ')
+      .replaceAll(_htmlTagRe, '')
+      .replaceAllMapped(
+        RegExp(r'\[([^\]]+)\]\([^)]+\)'),
+        (match) => match.group(1) ?? '',
+      )
+      .replaceAll(RegExp(r'^\s{0,3}#{1,6}\s+', multiLine: true), '')
+      .replaceAll(RegExp(r'^\s*[-*+]\s+', multiLine: true), '')
+      .replaceAll(RegExp(r'^\s*\d+[\.)]\s+', multiLine: true), '')
+      .replaceAll(RegExp(r'[`*_~>#]+'), '')
+      .replaceAll(RegExp(r'\s+'), ' ');
+  if (output.trim().isEmpty) return '';
+  return output;
+}
+
 String prepareMarkdownMath(String input) {
   final text = normalizeMarkdownMath(input);
   final buffer = StringBuffer();
@@ -198,6 +335,7 @@ String normalizeMarkdownMath(String input) {
       .replaceAll(r'\n', '\n')
       .replaceAll(r'\r', '\r');
 
+  normalized = _normalizeEmbeddedHtml(normalized);
   normalized = normalized.replaceAllMapped(
     _doubleEscapedLatexCommandRe,
     (match) => '\\${match.group(1)}',
@@ -211,7 +349,29 @@ String normalizeMarkdownMath(String input) {
     (match) => '\$\$${match.group(1) ?? ''}\$\$',
   );
   normalized = _normalizeMathCodeSpans(normalized);
+  normalized = _normalizeBareMathLines(normalized);
   return normalized;
+}
+
+String _normalizeEmbeddedHtml(String text) {
+  return text
+      .replaceAllMapped(_imgHtmlRe, (match) {
+        final tag = match.group(0) ?? '';
+        final src = _readHtmlAttribute(tag, 'src');
+        if (src == null || src.isEmpty) return '';
+        final alt = _readHtmlAttribute(tag, 'alt') ?? 'image';
+        return '\n\n![$alt]($src)\n\n';
+      })
+      .replaceAll(_lineBreakHtmlRe, '\n')
+      .replaceAll(RegExp(r'</?div\b[^>]*>', caseSensitive: false), '\n');
+}
+
+String? _readHtmlAttribute(String tag, String name) {
+  final pattern = RegExp(
+    "$name\\s*=\\s*(['\"])(.*?)\\1",
+    caseSensitive: false,
+  );
+  return pattern.firstMatch(tag)?.group(2);
 }
 
 String _normalizeMathCodeSpans(String text) {
@@ -236,6 +396,68 @@ bool _isLikelyMathCodeSpan(String value) {
   }
   if (_geometryLabelRe.hasMatch(text)) return true;
   return false;
+}
+
+String _normalizeBareMathLines(String text) {
+  return text.split('\n').map(_normalizeBareMathLine).join('\n');
+}
+
+String _normalizeBareMathLine(String line) {
+  if (line.trim().isEmpty || line.contains(r'$')) return line;
+
+  final leading = RegExp(r'^\s*').firstMatch(line)?.group(0) ?? '';
+  final trailing = RegExp(r'\s*$').firstMatch(line)?.group(0) ?? '';
+  final end = line.length - trailing.length;
+  if (end < leading.length) return line;
+
+  final core = line.substring(leading.length, end);
+  if (core.isEmpty || core.startsWith('|') || core.startsWith('<')) {
+    return line;
+  }
+
+  final optionMatch = RegExp(r'^([A-E][\.\、]\s+)(.+)$').firstMatch(core);
+  if (optionMatch != null) {
+    final label = optionMatch.group(1) ?? '';
+    final body = optionMatch.group(2)?.trim() ?? '';
+    if (_isLikelyBareMathExpression(body)) {
+      return '$leading$label\$$body\$$trailing';
+    }
+  }
+
+  if (_isLikelyBareMathExpression(core)) {
+    return '$leading\$${core.trim()}\$$trailing';
+  }
+
+  return line;
+}
+
+bool _isLikelyBareMathExpression(String value) {
+  final text = value.trim();
+  if (text.isEmpty ||
+      text.contains('\n') ||
+      text.contains(r'$') ||
+      text.contains('```') ||
+      text.contains('://') ||
+      _cjkTextRe.hasMatch(text)) {
+    return false;
+  }
+
+  final hasLatexCommand = _latexCommandRe.hasMatch(text);
+  final hasMathOperator =
+      _mathOperatorRe.hasMatch(text) && RegExp(r'[A-Za-z0-9\\]').hasMatch(text);
+  if (!hasLatexCommand && !hasMathOperator) return false;
+
+  final residue = text
+      .replaceAll(_latexCommandRe, '')
+      .replaceAll(RegExp(r'[A-Za-z0-9\s\\{}\[\]().,;:+\-*/=<>^_|&%]+'), '')
+      .replaceAll('π', '')
+      .replaceAll('∞', '')
+      .replaceAll('√', '')
+      .replaceAll('±', '')
+      .replaceAll('×', '')
+      .replaceAll('÷', '')
+      .replaceAll('°', '');
+  return residue.isEmpty;
 }
 
 String _encodeMathSegments(String text) {

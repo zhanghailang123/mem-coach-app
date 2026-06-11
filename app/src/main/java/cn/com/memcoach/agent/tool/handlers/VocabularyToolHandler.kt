@@ -10,6 +10,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import cn.com.memcoach.data.entity.Vocabulary
 import java.util.UUID
+import cn.com.memcoach.MemCoachApplication
+import cn.com.memcoach.agent.ChatMessage
+import org.json.JSONObject
+import org.json.JSONArray
 
 class VocabularyToolHandler(
     private val vocabularyDao: VocabularyDao,
@@ -77,6 +81,7 @@ class VocabularyToolHandler(
 
         val words = when (status) {
             "review" -> vocabularyDao.getDueForReview(System.currentTimeMillis(), limit)
+            "all", "" -> vocabularyDao.search("", limit)
             else -> vocabularyDao.getByStatus(status, limit)
         }
 
@@ -166,6 +171,8 @@ class VocabularyToolHandler(
                         put("word", w.word)
                         putNullable("phonetic", w.phonetic)
                         put("definitions", w.definitions)
+                        put("status", w.status)
+                        putNullable("tags", w.tags)
                     })
                 }
             })
@@ -191,11 +198,60 @@ class VocabularyToolHandler(
             }.toString()
         }
 
-        val phonetic = args["phonetic"]?.jsonPrimitive?.contentOrNull
-        val definitionsRaw = args["definitions"]?.jsonPrimitive?.contentOrNull ?: "[]"
-        val explanation = args["explanation"]?.jsonPrimitive?.contentOrNull 
-            ?: "### $wordText\n暂无详细释义。"
-        val tags = args["tags"]?.jsonPrimitive?.contentOrNull ?: "[]"
+        // 调用 AI 导师进行单词深度解析
+        var phonetic: String? = null
+        var definitionsRaw = "[]"
+        var explanation = "### $wordText\n暂无详细释义。"
+        var tags = "[]"
+
+        try {
+            val prompt = """
+                请为考研管理类联考（MEM/MBA）备考场景解析以下英文单词或短语：
+                "$wordText"
+                
+                请严格以下列 JSON 格式返回结果（不要包含任何 Markdown 标识符或额外文字）：
+                {
+                  "word": "$wordText",
+                  "phonetic": "音标，例如 /'bentʃmɑːk/",
+                  "definitions": [
+                    {"pos": "词性，如 n. 或 v.", "translation": "核心中文释义"}
+                  ],
+                  "explanation": "详细备考解析，使用 Markdown 格式。包含：1. 核心备考词义与联考真题常见用法；2. 精选 1-2 个双语例句及中文翻译；3. 记忆技巧（如词根词缀或词源/谐音联想）。",
+                  "tags": ["MEM", "词汇分级，如核心词/高频词/基础词"]
+                }
+            """.trimIndent()
+
+            val systemPrompt = "你是一个专业的 MEM/MBA 考研英语辅导名师，擅长词汇深度解析与记忆法教学。请严格输出符合格式的合法 JSON，不要用 ```json 包裹。"
+
+            val messages = listOf(
+                ChatMessage(role = "system", content = systemPrompt),
+                ChatMessage(role = "user", content = prompt)
+            )
+
+            val client = MemCoachApplication.instance.llmClient
+            val response = client.completeTurn(messages = messages, tools = null, modelId = null)
+            var jsonStr = response.content.trim()
+
+            if (jsonStr.startsWith("```json")) {
+                jsonStr = jsonStr.removePrefix("```json").trim()
+                if (jsonStr.endsWith("```")) {
+                    jsonStr = jsonStr.removeSuffix("```").trim()
+                }
+            } else if (jsonStr.startsWith("```")) {
+                jsonStr = jsonStr.removePrefix("```").trim()
+                if (jsonStr.endsWith("```")) {
+                    jsonStr = jsonStr.removeSuffix("```").trim()
+                }
+            }
+
+            val jsonObject = JSONObject(jsonStr)
+            phonetic = jsonObject.optString("phonetic", null)
+            definitionsRaw = jsonObject.optJSONArray("definitions")?.toString() ?: "[]"
+            explanation = jsonObject.optString("explanation", "### $wordText\n解析生成失败。")
+            tags = jsonObject.optJSONArray("tags")?.toString() ?: "[]"
+        } catch (e: Exception) {
+            android.util.Log.e("VocabularyToolHandler", "AI 解析单词出错", e)
+        }
 
         // 构造新单词实体
         val vocabId = "vocab-${UUID.randomUUID()}"

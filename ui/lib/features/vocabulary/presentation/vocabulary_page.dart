@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/native/mem_coach_native_bridge.dart';
 import '../../../core/widgets/markdown_math.dart';
 
-/// 单词本主页面
+/// 单词本主页面（单页搜索 + 状态过滤设计）
 class VocabularyPage extends StatefulWidget {
   const VocabularyPage({super.key});
 
@@ -11,23 +11,13 @@ class VocabularyPage extends StatefulWidget {
   State<VocabularyPage> createState() => _VocabularyPageState();
 }
 
-class _VocabularyPageState extends State<VocabularyPage> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  int _refreshKey = 0; // 页面刷新控制键
+class _VocabularyPageState extends State<VocabularyPage> {
+  int _refreshKey = 0; // 刷新控制键
+  String _searchQuery = ''; // 搜索词
+  String _selectedStatus = 'all'; // 当前选中的过滤状态: all, review, learning, mastered
+  final TextEditingController _searchController = TextEditingController();
 
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  // 刷新所有单词列表和统计看板
+  // 触发页面整体数据重新加载
   void _triggerRefresh() {
     setState(() {
       _refreshKey++;
@@ -35,8 +25,15 @@ class _VocabularyPageState extends State<VocabularyPage> with SingleTickerProvid
   }
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFF9FAFF),
       appBar: AppBar(
         title: const Text(
@@ -46,51 +43,31 @@ class _VocabularyPageState extends State<VocabularyPage> with SingleTickerProvid
         elevation: 0,
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.black87,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.note_add_outlined, color: Color(0xFF5B5FEF), size: 24),
+            onPressed: () => _showAddWordDialog(context),
+            tooltip: '录入新单词',
+          ),
+          const SizedBox(width: 12),
+        ],
       ),
       body: Column(
         children: [
-          // 顶部背诵数据统计看板
+          // 顶部学习统计仪表盘
           _buildStatsDashboard(),
-          const SizedBox(height: 12),
-          // Tab 切换栏
-          TabBar(
-            controller: _tabController,
-            indicatorColor: const Color(0xFF5B5FEF),
-            indicatorSize: TabBarIndicatorSize.label,
-            labelColor: const Color(0xFF5B5FEF),
-            unselectedLabelColor: Colors.black45,
-            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 13.5),
-            tabs: const [
-              Tab(text: '待复习'),
-              Tab(text: '学习中'),
-              Tab(text: '已掌握'),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // Tab 内容展示区
+          // 搜索框及过滤标签区
+          _buildSearchAndFilters(),
+          // 单词列表区
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildWordList('review'),
-                _buildWordList('learning'),
-                _buildWordList('mastered'),
-              ],
-            ),
+            child: _buildWordList(),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF5B5FEF),
-        elevation: 4,
-        onPressed: () => _showAddWordDialog(context),
-        child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
       ),
     );
   }
 
-  // 构建统计数据仪表盘
+  // 构建统计数据看板
   Widget _buildStatsDashboard() {
     return FutureBuilder<Map<String, dynamic>>(
       key: ValueKey('stats_$_refreshKey'),
@@ -194,31 +171,163 @@ class _VocabularyPageState extends State<VocabularyPage> with SingleTickerProvid
     );
   }
 
-  // 构建指定状态的单词列表
-  Widget _buildWordList(String type) {
+  // 构建搜索输入栏与过滤 Chip 行
+  Widget _buildSearchAndFilters() {
+    final filterStatuses = [
+      {'id': 'all', 'label': '全部'},
+      {'id': 'review', 'label': '待复习'},
+      {'id': 'learning', 'label': '学习中'},
+      {'id': 'mastered', 'label': '已掌握'},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 搜索输入栏
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.015),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (val) {
+                setState(() {
+                  _searchQuery = val.trim();
+                });
+              },
+              decoration: InputDecoration(
+                hintText: '搜索词汇...',
+                hintStyle: const TextStyle(color: Colors.black26, fontSize: 13),
+                prefixIcon: const Icon(Icons.search_rounded, color: Colors.black38, size: 20),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? GestureDetector(
+                        onTap: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchQuery = '';
+                          });
+                        },
+                        child: const Icon(Icons.clear_rounded, color: Colors.black38, size: 18),
+                      )
+                    : null,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+        ),
+        // 过滤 Chip 滚动行 (仅在未搜索或作为筛选辅助时呈现)
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+          child: Row(
+            children: filterStatuses.map((item) {
+              final isSelected = _selectedStatus == item['id'];
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedStatus = item['id']!;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFF5B5FEF) : Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSelected ? Colors.transparent : const Color(0xFFE2E6F5),
+                        width: 1.0,
+                      ),
+                      boxShadow: [
+                        if (isSelected)
+                          BoxShadow(
+                            color: const Color(0xFF5B5FEF).withOpacity(0.18),
+                            blurRadius: 6,
+                            offset: const Offset(0, 3),
+                          ),
+                      ],
+                    ),
+                    child: Text(
+                      item['label']!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                        color: isSelected ? Colors.white : Colors.black54,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 构建过滤后的词汇列表
+  Widget _buildWordList() {
+    final isSearching = _searchQuery.isNotEmpty;
+
+    // 动态决定调用哪一个 Native Tool
+    final Future<Map<String, dynamic>> fetchFuture = isSearching
+        ? MemCoachNativeBridge.callAgentTool('vocabulary_search', {
+            'query': _searchQuery,
+            'limit': 80,
+          })
+        : MemCoachNativeBridge.callAgentTool('vocabulary_list', {
+            'status': _selectedStatus,
+            'limit': 100,
+          });
+
     return FutureBuilder<Map<String, dynamic>>(
-      key: ValueKey('${type}_$_refreshKey'),
-      future: MemCoachNativeBridge.callAgentTool('vocabulary_list', {'status': type, 'limit': 100}),
+      key: ValueKey('list_${isSearching ? "search_" + _searchQuery : _selectedStatus}_$_refreshKey'),
+      future: fetchFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
         if (!snapshot.hasData || snapshot.data!['error'] != null) {
-          return const Center(child: Text('加载失败，下拉重试', style: TextStyle(color: Colors.black38)));
+          return const Center(child: Text('加载失败，请下拉或重试', style: TextStyle(color: Colors.black38)));
         }
 
-        final words = (snapshot.data?['words'] as List?) ?? [];
+        var words = (snapshot.data?['words'] as List?) ?? [];
+
+        // 如果在搜索模式下，且选定了过滤状态，在本地进行二次筛选
+        if (isSearching && _selectedStatus != 'all') {
+          words = words.where((item) {
+            final itemStatus = item['status'] ?? 'new';
+            // 如果是“待复习”，因为搜索数据未返回到期状态，默认展示所有匹配且状态为非已掌握或正在学习的词
+            if (_selectedStatus == 'review') {
+              return itemStatus == 'new' || itemStatus == 'learning';
+            }
+            return itemStatus == _selectedStatus;
+          }).toList();
+        }
 
         if (words.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.inbox_rounded, size: 48, color: Colors.black12),
+                Icon(Icons.inbox_rounded, size: 44, color: Colors.black12),
                 const SizedBox(height: 12),
                 Text(
-                  type == 'review' ? '太棒了，当前没有待复习单词！' : '暂无单词记录',
+                  isSearching ? '没有找到匹配的单词' : (_selectedStatus == 'review' ? '太棒了，当前没有待复习单词！' : '暂无相关单词记录'),
                   style: const TextStyle(color: Colors.black38, fontSize: 13),
                 ),
               ],
@@ -227,7 +336,7 @@ class _VocabularyPageState extends State<VocabularyPage> with SingleTickerProvid
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 80),
           itemCount: words.length,
           itemBuilder: (context, index) {
             final word = words[index];
@@ -238,7 +347,7 @@ class _VocabularyPageState extends State<VocabularyPage> with SingleTickerProvid
     );
   }
 
-  // 单词列表卡片设计
+  // 单词卡片组件
   Widget _wordCard(Map<String, dynamic> word) {
     final status = word['status'] ?? 'new';
     Color statusColor = const Color(0xFFFFD166);
@@ -259,7 +368,7 @@ class _VocabularyPageState extends State<VocabularyPage> with SingleTickerProvid
         border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withOpacity(0.015),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -373,7 +482,7 @@ class _VocabularyPageState extends State<VocabularyPage> with SingleTickerProvid
     }
   }
 
-  // 导航到详情页，如果标记认识/不认识后返回，则触发重新加载
+  // 导航到详情页，如果状态改变返回，则刷新数据
   void _navigateToDetail(String wordId) async {
     final needRefresh = await Navigator.push<bool>(
       context,
@@ -386,167 +495,155 @@ class _VocabularyPageState extends State<VocabularyPage> with SingleTickerProvid
     }
   }
 
-  // 手动添加单词输入弹窗
+  // 手动录入新单词的对话框（简化输入并走 AI 解析）
   Future<void> _showAddWordDialog(BuildContext context) async {
     final wordController = TextEditingController();
-    final phoneticController = TextEditingController();
-    final translationController = TextEditingController();
-    final tagsController = TextEditingController();
-    final explanationController = TextEditingController();
+    bool isLoading = false;
 
     return showDialog(
       context: context,
+      barrierDismissible: false, // AI 生成期间禁止点击外部关闭
       builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF5B5FEF).withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.note_add_rounded, color: Color(0xFF5B5FEF), size: 20),
-              ),
-              const SizedBox(width: 10),
-              const Text('录入新单词', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: wordController,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: '单词 *',
-                    hintText: '输入英文单词',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: phoneticController,
-                  decoration: const InputDecoration(
-                    labelText: '音标',
-                    hintText: '例如 /\'bentʃmɑːk/',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: translationController,
-                  decoration: const InputDecoration(
-                    labelText: '中文释义 *',
-                    hintText: '例如 n. 基准; 标杆',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: tagsController,
-                  decoration: const InputDecoration(
-                    labelText: '标签',
-                    hintText: '多个用逗号隔开，如 MEM, 核心词',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: explanationController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: '备考解析与例句（支持 Markdown）',
-                    hintText: '可在此添加例句、搭配等...',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF5B5FEF)),
-              onPressed: () async {
-                final word = wordController.text.trim();
-                final translation = translationController.text.trim();
-                if (word.isEmpty || translation.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('请填写单词和释义')),
-                  );
-                  return;
-                }
-
-                // 分离词性与核心释义
-                String pos = '';
-                String trans = translation;
-                final posRegex = RegExp(r'^([a-zA-Z]+\.)\s*(.*)$');
-                if (posRegex.hasMatch(translation)) {
-                  final match = posRegex.firstMatch(translation);
-                  pos = match?.group(1) ?? '';
-                  trans = match?.group(2) ?? '';
-                }
-                final definitionsJson = jsonEncode([
-                  {'pos': pos, 'translation': trans}
-                ]);
-
-                // 解析标签列表
-                final rawTags = tagsController.text.split(RegExp(r'[,，]')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-                final tagsJson = jsonEncode(rawTags);
-
-                // 准备详细解析正文
-                String exp = explanationController.text.trim();
-                if (exp.isEmpty) {
-                  exp = '### $word\n\n- **核心释义**: $translation\n';
-                }
-
-                final result = await MemCoachNativeBridge.callAgentTool('vocabulary_add', {
-                  'word': word,
-                  'phonetic': phoneticController.text.trim().isEmpty ? null : phoneticController.text.trim(),
-                  'definitions': definitionsJson,
-                  'explanation': exp,
-                  'tags': tagsJson,
-                });
-
-                if (context.mounted) {
-                  if (result['success'] == true) {
-                    final alreadyExists = result['already_exists'] == true;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(alreadyExists ? '单词「$word」已存在于词库' : '添加单词「$word」成功'),
-                        backgroundColor: alreadyExists ? Colors.orange : const Color(0xFF20B486),
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return PopScope(
+              canPop: !isLoading, // AI 生成期间禁止返回键关闭
+              child: AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                title: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF5B5FEF).withOpacity(0.1),
+                        shape: BoxShape.circle,
                       ),
-                    );
-                    Navigator.pop(context);
-                    _triggerRefresh();
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('录入失败: ${result['error'] ?? "未知错误"}'), backgroundColor: Colors.red),
-                    );
-                  }
-                }
-              },
-              child: const Text('保存'),
-            ),
-          ],
+                      child: const Icon(Icons.note_add_rounded, color: Color(0xFF5B5FEF), size: 20),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text('录入新单词', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                  ],
+                ),
+                content: isLoading
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF5B5FEF)),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'AI 导师正在进行深度学术解析...',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.black54,
+                                  fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextField(
+                            controller: wordController,
+                            autofocus: true,
+                            decoration: const InputDecoration(
+                              labelText: '单词/短语 *',
+                              hintText: '输入英文单词或短语，AI 将自动分析',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.all(Radius.circular(12)),
+                              ),
+                              isDense: true,
+                            ),
+                          ),
+                        ],
+                      ),
+                actions: isLoading
+                    ? null
+                    : [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('取消'),
+                        ),
+                        FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF5B5FEF),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: () async {
+                            final word = wordController.text.trim();
+                            if (word.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('请输入单词')),
+                              );
+                              return;
+                            }
+
+                            setState(() {
+                              isLoading = true;
+                            });
+
+                            try {
+                              final result = await MemCoachNativeBridge.callAgentTool('vocabulary_add', {
+                                'word': word,
+                              });
+
+                              if (context.mounted) {
+                                if (result['success'] == true) {
+                                  final alreadyExists = result['already_exists'] == true;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(alreadyExists ? '单词「$word」已存在于词库' : '添加单词「$word」成功'),
+                                      backgroundColor: alreadyExists ? Colors.orange : const Color(0xFF20B486),
+                                    ),
+                                  );
+                                  Navigator.pop(context);
+                                  _triggerRefresh();
+                                } else {
+                                  setState(() {
+                                    isLoading = false;
+                                  });
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('录入失败: ${result['error'] ?? "未知错误"}'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                setState(() {
+                                  isLoading = false;
+                                });
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('录入出错: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          child: const Text('AI 生成解析'),
+                        ),
+                      ],
+              ),
+            );
+          },
         );
       },
     );
   }
 }
 
-/// 单词详情页（StatefulWidget 便于处理局部状态更新）
+/// 单词详情页
 class VocabularyDetailPage extends StatefulWidget {
   final String wordId;
   const VocabularyDetailPage({super.key, required this.wordId});
@@ -557,11 +654,42 @@ class VocabularyDetailPage extends StatefulWidget {
 
 class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
   Future<Map<String, dynamic>>? _detailFuture;
+  bool _transitionEnded = false; // 是否完成转场动画
 
   @override
   void initState() {
     super.initState();
     _detailFuture = _loadDetail();
+
+    // 延迟加载与渲染，避免复杂的 MarkdownMathView 造成转场掉帧
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && route.animation != null) {
+        void listener(AnimationStatus status) {
+          if (status == AnimationStatus.completed) {
+            route.animation!.removeStatusListener(listener);
+            if (mounted) {
+              setState(() {
+                _transitionEnded = true;
+              });
+            }
+          }
+        }
+
+        if (route.animation!.isCompleted) {
+          setState(() {
+            _transitionEnded = true;
+          });
+        } else {
+          route.animation!.addStatusListener(listener);
+        }
+      } else {
+        setState(() {
+          _transitionEnded = true;
+        });
+      }
+    });
   }
 
   Future<Map<String, dynamic>> _loadDetail() async {
@@ -581,7 +709,7 @@ class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
       body: FutureBuilder<Map<String, dynamic>>(
         future: _detailFuture,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting || !_transitionEnded) {
             return const Center(child: CircularProgressIndicator());
           }
           if (!snapshot.hasData || snapshot.data!['error'] != null) {
@@ -605,7 +733,7 @@ class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 顶部卡片
+                // 详情卡片
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(22),

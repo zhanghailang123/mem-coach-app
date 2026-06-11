@@ -259,10 +259,9 @@ class _ExamBankPageState extends State<ExamBankPage>
                   ],
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  item['stem'] ?? '',
+                MarkdownMathPreview(
+                  data: item['stem']?.toString() ?? '',
                   maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 14,
                     height: 1.5,
@@ -388,10 +387,9 @@ class QuestionListPage extends StatelessWidget {
                           ),
                           const SizedBox(width: 14),
                           Expanded(
-                            child: Text(
-                              q['stem'] ?? '',
+                            child: MarkdownMathPreview(
+                              data: q['stem']?.toString() ?? '',
                               maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,

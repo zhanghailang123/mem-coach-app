@@ -31,6 +31,7 @@ class _AppShellPageState extends State<AppShellPage> {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       // 使用 Stack 叠加悬浮 Dock 在主页面之上
       body: Stack(
         children: [

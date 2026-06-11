@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 
 import '../../../core/native/mem_coach_native_bridge.dart';
+import '../../../core/widgets/markdown_math.dart';
 import '../../coach/presentation/practice_page.dart';
-
 
 class KnowledgePage extends StatefulWidget {
   const KnowledgePage({super.key, this.initialTab = 0});
@@ -37,7 +37,8 @@ class _KnowledgePageState extends State<KnowledgePage> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 100),
+        padding:
+            const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 100),
         children: [
           _SegmentTabs(
             selected: _selectedTab,
@@ -125,7 +126,9 @@ class _FileGroupSectionState extends State<_FileGroupSection> {
         title: const Text('删除文件'),
         content: Text('确定要删除 "$name" 吗？这将同时清理手机存储。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('删除', style: TextStyle(color: Colors.red)),
@@ -144,7 +147,6 @@ class _FileGroupSectionState extends State<_FileGroupSection> {
             SnackBar(content: Text('已删除文件，并清理 $deletedCount 道关联真题')),
           );
         }
-
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -160,14 +162,16 @@ class _FileGroupSectionState extends State<_FileGroupSection> {
     return _KbCard(
       title: '真题文件',
       child: _loading
-          ? const Center(child: Padding(
+          ? const Center(
+              child: Padding(
               padding: EdgeInsets.all(20),
               child: CircularProgressIndicator(),
             ))
           : _files.isEmpty
               ? const Padding(
                   padding: EdgeInsets.all(20),
-                  child: Text('暂无真题文件，请先上传 PDF', style: TextStyle(color: Colors.black54)),
+                  child: Text('暂无真题文件，请先上传 PDF',
+                      style: TextStyle(color: Colors.black54)),
                 )
               : Column(
                   children: _files.map((f) {
@@ -180,11 +184,15 @@ class _FileGroupSectionState extends State<_FileGroupSection> {
 
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFEF476F)),
-                      title: Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
-                      subtitle: Text('$pageCount 页${subject != null ? ' · $subject' : ''}${year != null ? ' · $year' : ''}'),
+                      leading: const Icon(Icons.picture_as_pdf_rounded,
+                          color: Color(0xFFEF476F)),
+                      title: Text(name,
+                          style: const TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: Text(
+                          '$pageCount 页${subject != null ? ' · $subject' : ''}${year != null ? ' · $year' : ''}'),
                       trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline_rounded, color: Colors.black38),
+                        icon: const Icon(Icons.delete_outline_rounded,
+                            color: Colors.black38),
                         onPressed: () => _deleteFile(id, name),
                       ),
                       onTap: () {
@@ -198,7 +206,6 @@ class _FileGroupSectionState extends State<_FileGroupSection> {
                         );
                       },
                     );
-
                   }).toList(),
                 ),
     );
@@ -216,7 +223,8 @@ class PdfQuestionManagementPage extends StatefulWidget {
   final String title;
 
   @override
-  State<PdfQuestionManagementPage> createState() => _PdfQuestionManagementPageState();
+  State<PdfQuestionManagementPage> createState() =>
+      _PdfQuestionManagementPageState();
 }
 
 class _PdfQuestionManagementPageState extends State<PdfQuestionManagementPage> {
@@ -232,7 +240,8 @@ class _PdfQuestionManagementPageState extends State<PdfQuestionManagementPage> {
   Future<void> _loadQuestions() async {
     setState(() => _loading = true);
     try {
-      final questions = await MemCoachNativeBridge.listPdfQuestions(widget.documentId);
+      final questions =
+          await MemCoachNativeBridge.listPdfQuestions(widget.documentId);
       if (mounted) {
         setState(() {
           _questions = questions;
@@ -256,7 +265,9 @@ class _PdfQuestionManagementPageState extends State<PdfQuestionManagementPage> {
         title: const Text('删除关联真题'),
         content: Text('确定删除 "${widget.title}" 已解析出的全部真题吗？PDF 文件本身会保留。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('删除真题', style: TextStyle(color: Colors.red)),
@@ -267,7 +278,8 @@ class _PdfQuestionManagementPageState extends State<PdfQuestionManagementPage> {
 
     if (confirmed != true) return;
     try {
-      final result = await MemCoachNativeBridge.deletePdfQuestions(widget.documentId);
+      final result =
+          await MemCoachNativeBridge.deletePdfQuestions(widget.documentId);
       await _loadQuestions();
       if (mounted) {
         final deletedCount = result['deleted_question_count'] ?? 0;
@@ -313,16 +325,34 @@ class _PdfQuestionManagementPageState extends State<PdfQuestionManagementPage> {
                     final status = question['parse_status']?.toString() ?? '';
                     final confidence = question['parse_confidence'];
                     return _KbCard(
-                      title: number == null || number == 'null' ? '第 ${index + 1} 题' : '第 $number 题',
+                      title: number == null || number == 'null'
+                          ? '第 ${index + 1} 题'
+                          : '第 $number 题',
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(stem, style: const TextStyle(fontWeight: FontWeight.w700, height: 1.5)),
+                          MarkdownMathPreview(
+                            data: stem,
+                            maxLines: 3,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              height: 1.5,
+                              color: Colors.black87,
+                            ),
+                          ),
                           const SizedBox(height: 10),
-                          ..._buildOptionTexts(question['options']?.toString()).map(
+                          ..._buildOptionTexts(question['options']?.toString())
+                              .map(
                             (option) => Padding(
                               padding: const EdgeInsets.only(bottom: 4),
-                              child: Text(option),
+                              child: MarkdownMathPreview(
+                                data: option,
+                                maxLines: 2,
+                                style: const TextStyle(
+                                  height: 1.45,
+                                  color: Colors.black87,
+                                ),
+                              ),
                             ),
                           ),
                           const Divider(height: 24),
@@ -332,16 +362,33 @@ class _PdfQuestionManagementPageState extends State<PdfQuestionManagementPage> {
                             children: [
                               _MetaChip(label: '页码 $page'),
                               if (status.isNotEmpty) _MetaChip(label: status),
-                              if (confidence != null) _MetaChip(label: '置信度 $confidence'),
+                              if (confidence != null)
+                                _MetaChip(label: '置信度 $confidence'),
                             ],
                           ),
-                          if ((question['answer']?.toString() ?? '').isNotEmpty) ...[
+                          if ((question['answer']?.toString() ?? '')
+                              .isNotEmpty) ...[
                             const SizedBox(height: 10),
-                            Text('答案：${question['answer']}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                            MarkdownMathPreview(
+                              data: '答案：${question['answer']}',
+                              maxLines: 2,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: Colors.black87,
+                              ),
+                            ),
                           ],
-                          if ((question['explanation']?.toString() ?? '').isNotEmpty) ...[
+                          if ((question['explanation']?.toString() ?? '')
+                              .isNotEmpty) ...[
                             const SizedBox(height: 8),
-                            Text('解析：${question['explanation']}', style: const TextStyle(color: Colors.black87, height: 1.5)),
+                            MarkdownMathPreview(
+                              data: '解析：${question['explanation']}',
+                              maxLines: 3,
+                              style: const TextStyle(
+                                color: Colors.black87,
+                                height: 1.5,
+                              ),
+                            ),
                           ],
                         ],
                       ),
@@ -352,11 +399,14 @@ class _PdfQuestionManagementPageState extends State<PdfQuestionManagementPage> {
   }
 
   List<String> _buildOptionTexts(String? rawOptions) {
-    if (rawOptions == null || rawOptions.isEmpty || rawOptions == '{}') return const [];
+    if (rawOptions == null || rawOptions.isEmpty || rawOptions == '{}')
+      return const [];
     try {
       final decoded = jsonDecode(rawOptions);
       if (decoded is Map) {
-        return decoded.entries.map((entry) => '${entry.key}. ${entry.value}').toList();
+        return decoded.entries
+            .map((entry) => '${entry.key}. ${entry.value}')
+            .toList();
       }
     } catch (_) {}
     return [rawOptions];
@@ -376,14 +426,14 @@ class _MetaChip extends StatelessWidget {
         color: Colors.black.withOpacity(0.05),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+      child: Text(label,
+          style: const TextStyle(fontSize: 12, color: Colors.black54)),
     );
   }
 }
 
 /// 知识图谱区域
 class _KnowledgeTreeSection extends StatefulWidget {
-
   const _KnowledgeTreeSection();
 
   @override
@@ -403,7 +453,8 @@ class _KnowledgeTreeSectionState extends State<_KnowledgeTreeSection> {
 
   Future<void> _loadTree() async {
     try {
-      final nodes = await MemCoachNativeBridge.getKnowledgeTree(subject: _subject);
+      final nodes =
+          await MemCoachNativeBridge.getKnowledgeTree(subject: _subject);
       if (mounted) {
         setState(() {
           _nodes = nodes;
@@ -422,14 +473,16 @@ class _KnowledgeTreeSectionState extends State<_KnowledgeTreeSection> {
     return _KbCard(
       title: '逻辑知识树',
       child: _loading
-          ? const Center(child: Padding(
+          ? const Center(
+              child: Padding(
               padding: EdgeInsets.all(20),
               child: CircularProgressIndicator(),
             ))
           : _nodes.isEmpty
               ? const Padding(
                   padding: EdgeInsets.all(20),
-                  child: Text('暂无知识图谱数据', style: TextStyle(color: Colors.black54)),
+                  child:
+                      Text('暂无知识图谱数据', style: TextStyle(color: Colors.black54)),
                 )
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -443,29 +496,37 @@ class _KnowledgeTreeSectionState extends State<_KnowledgeTreeSection> {
                       child: Row(
                         children: [
                           Icon(
-                            level == 0 ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
+                            level == 0
+                                ? Icons.radio_button_checked_rounded
+                                : Icons.radio_button_unchecked_rounded,
                             size: 18,
-                            color: level == 0 ? Theme.of(context).colorScheme.primary : Colors.black38,
+                            color: level == 0
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.black38,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               name,
                               style: TextStyle(
-                                fontWeight: level == 0 ? FontWeight.w900 : FontWeight.w600,
+                                fontWeight: level == 0
+                                    ? FontWeight.w900
+                                    : FontWeight.w600,
                               ),
                             ),
                           ),
                           if (examFreq > 0)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
                               decoration: BoxDecoration(
                                 color: Colors.orange.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: Text(
                                 '考频 $examFreq',
-                                style: const TextStyle(fontSize: 11, color: Colors.orange),
+                                style: const TextStyle(
+                                    fontSize: 11, color: Colors.orange),
                               ),
                             ),
                         ],
@@ -520,7 +581,8 @@ class _MemorizeSectionState extends State<_MemorizeSection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_loading)
-            const Center(child: Padding(
+            const Center(
+                child: Padding(
               padding: EdgeInsets.all(20),
               child: CircularProgressIndicator(),
             ))
@@ -571,7 +633,9 @@ class _KbCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          Text(title,
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
           const SizedBox(height: 14),
           child,
         ],

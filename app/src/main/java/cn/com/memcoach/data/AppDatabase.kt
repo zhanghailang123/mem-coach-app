@@ -36,9 +36,12 @@ import cn.com.memcoach.data.entity.*
         ChatMessageEntity::class,
         AnswerRecord::class,
         Vocabulary::class,
-        VocabularyReview::class
+        VocabularyReview::class,
+        ContentPatch::class,
+        LearningInsight::class,
+        UserMemo::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -48,6 +51,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun answerRecordDao(): AnswerRecordDao
     abstract fun vocabularyDao(): VocabularyDao
     abstract fun vocabularyReviewDao(): VocabularyReviewDao
+    abstract fun contentPatchDao(): ContentPatchDao
+    abstract fun learningInsightDao(): LearningInsightDao
+    abstract fun userMemoDao(): UserMemoDao
 
     /** 知识关系边 DAO */
     abstract fun knowledgeEdgeDao(): KnowledgeEdgeDao
@@ -259,13 +265,61 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS content_patches (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        target_type TEXT NOT NULL,
+                        target_id TEXT NOT NULL,
+                        operation TEXT NOT NULL,
+                        patch_content TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        risk_level TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'pending',
+                        review_notes TEXT,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    )
+                """)
+
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS learning_insights (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        category TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        confidence TEXT NOT NULL,
+                        evidence TEXT NOT NULL,
+                        suggestion TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'pending',
+                        user_notes TEXT,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    )
+                """)
+
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS user_memos (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        type TEXT NOT NULL,
+                        target_id TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        tags TEXT NOT NULL,
+                        is_pinned INTEGER NOT NULL DEFAULT 0,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    )
+                """)
+            }
+        }
+
         private fun buildDatabase(context: Context): AppDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 DATABASE_NAME
             )
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                 .addCallback(DatabasePreloader(context))
                 .fallbackToDestructiveMigration()
                 .build()

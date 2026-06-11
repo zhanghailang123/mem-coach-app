@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../../core/native/mem_coach_native_bridge.dart';
+import '../../../core/widgets/markdown_math.dart';
 import 'coach_shell_card.dart';
 
 /// 题目数据模型
@@ -50,7 +51,9 @@ class QuestionData {
       explanation: map['explanation']?.toString(),
       topic: map['topic']?.toString(),
       difficulty: map['difficulty']?.toString(),
-      year: map['year'] is int ? map['year'] as int : int.tryParse(map['year']?.toString() ?? ''),
+      year: map['year'] is int
+          ? map['year'] as int
+          : int.tryParse(map['year']?.toString() ?? ''),
       sourceFile: map['source_file']?.toString(),
     );
   }
@@ -74,9 +77,12 @@ class AnswerResult {
 }
 
 /// 回调：答题完成
-typedef OnAnswerSubmitted = void Function(QuestionData question, String userAnswer, AnswerResult result);
+typedef OnAnswerSubmitted = void Function(
+    QuestionData question, String userAnswer, AnswerResult result);
+
 /// 回调：下一题
 typedef OnNextQuestion = void Function();
+
 /// 回调：标记不确定
 typedef OnUncertain = void Function(QuestionData question);
 
@@ -136,7 +142,9 @@ class _QuestionCardState extends State<QuestionCard> {
 
       final answerResultObj = AnswerResult(
         correct: answerResult['correct'] == true,
-        correctAnswer: answerResult['correct_answer']?.toString() ?? widget.question.answer ?? '',
+        correctAnswer: answerResult['correct_answer']?.toString() ??
+            widget.question.answer ??
+            '',
         explanation: answerResult['explanation']?.toString(),
         hint: answerResult['hint']?.toString(),
         masteryLevel: answerResult['mastery_level']?.toString(),
@@ -148,13 +156,16 @@ class _QuestionCardState extends State<QuestionCard> {
           result = answerResultObj;
           _loading = false;
         });
-        widget.onAnswerSubmitted?.call(widget.question, selected!, answerResultObj);
+        widget.onAnswerSubmitted
+            ?.call(widget.question, selected!, answerResultObj);
       }
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('提交失败：${_friendlySubmitError(e)}'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('提交失败：${_friendlySubmitError(e)}'),
+              backgroundColor: Colors.red),
         );
       }
     }
@@ -167,7 +178,6 @@ class _QuestionCardState extends State<QuestionCard> {
     if (message.contains('user_answer required')) return '答案为空，请重新选择选项';
     return message.replaceFirst('Exception: ', '');
   }
-
 
   void _handleUncertain() {
     widget.onUncertain?.call(widget.question);
@@ -190,7 +200,8 @@ class _QuestionCardState extends State<QuestionCard> {
       if (widget.currentIndex != null && widget.totalCount != null)
         '第 ${widget.currentIndex}/${widget.totalCount} 题',
       if (q.topic != null && q.topic!.isNotEmpty) q.topic,
-      if (q.difficulty != null && q.difficulty!.isNotEmpty) _difficultyLabel(q.difficulty!),
+      if (q.difficulty != null && q.difficulty!.isNotEmpty)
+        _difficultyLabel(q.difficulty!),
     ].join(' · ');
 
     return CoachShellCard(
@@ -199,21 +210,37 @@ class _QuestionCardState extends State<QuestionCard> {
         children: [
           // 题目信息头
           if (headerText.isNotEmpty)
-            Text(headerText, style: const TextStyle(color: Colors.black54, fontWeight: FontWeight.w700)),
+            Text(headerText,
+                style: const TextStyle(
+                    color: Colors.black54, fontWeight: FontWeight.w700)),
           const SizedBox(height: 14),
 
           // 题干
-          Text(
-            q.stem,
-            style: const TextStyle(fontSize: 17, height: 1.5, fontWeight: FontWeight.w700),
+          MarkdownMathView(
+            data: q.stem,
+            selectable: false,
+            baseFontSize: 17,
+            mathColor: Theme.of(context).colorScheme.primary,
+            styleSheet:
+                examMarkdownStyleSheet(context, baseFontSize: 17).copyWith(
+              p: const TextStyle(
+                fontSize: 17,
+                height: 1.5,
+                fontWeight: FontWeight.w700,
+                color: Colors.black87,
+              ),
+            ),
           ),
           const SizedBox(height: 14),
 
           // 选项
           ...q.options.entries.map((entry) {
             final active = selected == entry.key;
-            final isCorrectAnswer = submitted && result != null && entry.key == result!.correctAnswer;
-            final isWrongSelection = submitted && result != null && active && !result!.correct;
+            final isCorrectAnswer = submitted &&
+                result != null &&
+                entry.key == result!.correctAnswer;
+            final isWrongSelection =
+                submitted && result != null && active && !result!.correct;
 
             Color bgColor;
             Color borderColor;
@@ -229,15 +256,21 @@ class _QuestionCardState extends State<QuestionCard> {
                 borderColor = Colors.transparent;
               }
             } else {
-              bgColor = active ? Theme.of(context).colorScheme.primary.withOpacity(0.08) : Colors.grey.shade50;
-              borderColor = active ? Theme.of(context).colorScheme.primary : Colors.transparent;
+              bgColor = active
+                  ? Theme.of(context).colorScheme.primary.withOpacity(0.08)
+                  : Colors.grey.shade50;
+              borderColor = active
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.transparent;
             }
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
-                onTap: submitted ? null : () => setState(() => selected = entry.key),
+                onTap: submitted
+                    ? null
+                    : () => setState(() => selected = entry.key),
                 child: Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -247,11 +280,32 @@ class _QuestionCardState extends State<QuestionCard> {
                   ),
                   child: Row(
                     children: [
-                      Text(entry.key, style: const TextStyle(fontWeight: FontWeight.w900)),
+                      Text(entry.key,
+                          style: const TextStyle(fontWeight: FontWeight.w900)),
                       const SizedBox(width: 12),
-                      Expanded(child: Text(entry.value)),
+                      Expanded(
+                        child: MarkdownMathView(
+                          data: entry.value,
+                          selectable: false,
+                          baseFontSize: 14.5,
+                          mathColor: Theme.of(context).colorScheme.primary,
+                          styleSheet: examMarkdownStyleSheet(
+                            context,
+                            baseFontSize: 14.5,
+                          ).copyWith(
+                            p: TextStyle(
+                              fontSize: 14.5,
+                              height: 1.45,
+                              fontWeight:
+                                  active ? FontWeight.w800 : FontWeight.w500,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ),
                       if (submitted && isCorrectAnswer)
-                        const Icon(Icons.check_circle, color: Color(0xFF20B486), size: 20),
+                        const Icon(Icons.check_circle,
+                            color: Color(0xFF20B486), size: 20),
                       if (isWrongSelection)
                         const Icon(Icons.cancel, color: Colors.red, size: 20),
                     ],
@@ -268,7 +322,9 @@ class _QuestionCardState extends State<QuestionCard> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: result!.correct ? const Color(0xFF20B486).withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                color: result!.correct
+                    ? const Color(0xFF20B486).withOpacity(0.1)
+                    : Colors.orange.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -278,16 +334,37 @@ class _QuestionCardState extends State<QuestionCard> {
                     result!.correct ? '✓ 回答正确！' : '✗ 回答错误',
                     style: TextStyle(
                       fontWeight: FontWeight.w800,
-                      color: result!.correct ? const Color(0xFF20B486) : Colors.orange,
+                      color: result!.correct
+                          ? const Color(0xFF20B486)
+                          : Colors.orange,
                     ),
                   ),
-                  if (!result!.correct && result!.explanation != null && result!.explanation!.isNotEmpty) ...[
+                  if (!result!.correct &&
+                      result!.explanation != null &&
+                      result!.explanation!.isNotEmpty) ...[
                     const SizedBox(height: 8),
-                    Text(result!.explanation!, style: const TextStyle(height: 1.4)),
+                    MarkdownMathView(
+                      data: result!.explanation!,
+                      selectable: false,
+                      baseFontSize: 14,
+                      mathColor: Theme.of(context).colorScheme.primary,
+                      styleSheet: examMarkdownStyleSheet(
+                        context,
+                        baseFontSize: 14,
+                      ).copyWith(
+                        p: const TextStyle(
+                          fontSize: 14,
+                          height: 1.4,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
                   ],
                   if (result!.masteryLevel != null) ...[
                     const SizedBox(height: 6),
-                    Text('掌握度：${result!.masteryLevel}', style: const TextStyle(color: Colors.black54, fontSize: 12)),
+                    Text('掌握度：${result!.masteryLevel}',
+                        style: const TextStyle(
+                            color: Colors.black54, fontSize: 12)),
                   ],
                 ],
               ),
@@ -310,13 +387,15 @@ class _QuestionCardState extends State<QuestionCard> {
                   child: FilledButton(
                     onPressed: selected == null || _loading ? null : _submit,
                     child: _loading
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2))
                         : const Text('提交'),
                   ),
                 ),
               ],
             )
-
           else
             SizedBox(
               width: double.infinity,
