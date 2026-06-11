@@ -4,6 +4,7 @@ import cn.com.memcoach.agent.AgentInput
 import cn.com.memcoach.agent.AgentOrchestrator
 import cn.com.memcoach.agent.AgentPromptContext
 import cn.com.memcoach.agent.AgentReasoningEffort
+import cn.com.memcoach.agent.AgentToolRouter
 import cn.com.memcoach.agent.ConversationMessage
 
 import cn.com.memcoach.pdf.PdfDocumentRepository
@@ -21,6 +22,7 @@ import kotlinx.coroutines.launch
  */
 class MemCoachChannelBridge(
     private val orchestrator: AgentOrchestrator,
+    private val toolRouter: AgentToolRouter,
     private val scope: CoroutineScope,
     private val eventSink: NativeEventSink,
     private val studyRecordDao: cn.com.memcoach.data.dao.StudyRecordDao,
@@ -44,17 +46,15 @@ class MemCoachChannelBridge(
             "agent.setReasoningEffort" -> setReasoningEffort(arguments)
             "pdf.upload" -> uploadPdf(arguments)
             "pdf.parseStatus" -> getPdfParseStatus(arguments)
-
             "pdf.list" -> listPdfs()
             "pdf.questions" -> listPdfQuestions(arguments)
             "pdf.deleteQuestions" -> deletePdfQuestions(arguments)
-
             "insight.getSummary" -> getInsightSummary()
-
             "exam.getRandomQuestions" -> getRandomQuestions(arguments)
             "exam.submitAnswer" -> submitAnswer(arguments)
             "knowledge.getTree" -> getKnowledgeTree(arguments)
             "home.getData" -> getHomeData()
+            "tool.call" -> callAgentTool(arguments)
             "conversation.create" -> createConversation(arguments)
             "conversation.list" -> listConversations()
             "conversation.getMessages" -> getConversationMessages(arguments)
@@ -64,6 +64,33 @@ class MemCoachChannelBridge(
             "pdf.delete" -> deletePdf(arguments)
             "pdf.getActiveJobs" -> getActivePdfJobs()
             else -> error("Unsupported native method: $method")
+        }
+    }
+
+    private suspend fun callAgentTool(arguments: Map<String, Any?>): Map<String, Any?> {
+        return try {
+            val toolName = arguments["tool_name"] as? String ?: return mapOf("error" to "tool_name required")
+            val toolArgs = arguments["arguments"] as? Map<*, *> ?: emptyMap<String, Any?>()
+
+            // 简单 JSON 构造
+            val argsJson = "{" + toolArgs.entries.joinToString(",") { (k, v) ->
+                val value = when (v) {
+                    is String -> "\"${v.replace("\"", "\\\"")}\""
+                    is Number -> v.toString()
+                    is Boolean -> v.toString()
+                    null -> "null"
+                    else -> "\"$v\""
+                }
+                "\"$k\":$value"
+            } + "}"
+
+            // 调用工具
+            val resultJson = toolRouter.execute(toolName, argsJson)
+
+            // 返回
+            mapOf("success" to true, "data" to resultJson)
+        } catch (e: Exception) {
+            mapOf("error" to (e.message ?: "Unknown error"))
         }
     }
 
@@ -387,15 +414,16 @@ class MemCoachChannelBridge(
 
     private suspend fun getRandomQuestions(arguments: Map<String, Any?>): List<Map<String, Any?>> {
 
-        val subject = normalizeSubject(arguments["subject"] as? String)
-
-        val section = normalizeSection(arguments["section"] as? String)
+        val scope = normalizeExamScope(
+            subject = arguments["subject"] as? String,
+            section = arguments["section"] as? String
+        )
         val count = (arguments["count"] as? Int) ?: 5
         val topic = arguments["topic"] as? String
 
         val questions = examQuestionDao.search(
-            subject = subject,
-            section = section,
+            subject = scope.subject,
+            section = scope.section,
             topic = topic,
             limit = count * 2 // 获取更多以便随机抽取
         ).shuffled().take(count)
@@ -808,7 +836,35 @@ class MemCoachChannelBridge(
             "logic", "逻辑" -> "logic"
             "writing", "写作" -> "writing"
             "english", "英语", "english2", "english_ii", "英语二" -> "english"
+            "cloze" -> "cloze"
+            "reading_a", "reading-a", "阅读理解a" -> "reading_a"
+            "reading_b", "reading-b", "阅读理解b" -> "reading_b"
+            "translation", "翻译" -> "translation"
+            "writing_a", "writing-a", "小作文" -> "writing_a"
+            "writing_b", "writing-b", "大作文" -> "writing_b"
             else -> raw.trim()
+        }
+    }
+
+    private data class ExamScope(
+        val subject: String?,
+        val section: String?
+    )
+
+    private fun normalizeExamScope(subject: String?, section: String?): ExamScope {
+        val rawSubject = subject?.trim()?.takeIf { it.isNotBlank() }
+        val explicitSection = normalizeSection(section)
+        val sectionFromSubject = normalizeSection(rawSubject)
+
+        return when (rawSubject?.lowercase()) {
+            null, "null", "all", "全部" -> ExamScope(null, explicitSection)
+            "math", "数学", "logic", "逻辑", "writing", "写作" ->
+                ExamScope("management_comprehensive", sectionFromSubject)
+            "management_comprehensive", "management", "comprehensive", "管综", "管理类综合", "管理类综合能力" ->
+                ExamScope("management_comprehensive", explicitSection)
+            "english", "english2", "english_ii", "英语", "英语二" ->
+                ExamScope("english", explicitSection)
+            else -> ExamScope(rawSubject, explicitSection)
         }
     }
 

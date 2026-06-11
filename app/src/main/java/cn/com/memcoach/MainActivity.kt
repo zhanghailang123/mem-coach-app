@@ -17,7 +17,10 @@ import cn.com.memcoach.agent.tool.handlers.LongTermMemoryToolHandler
 import cn.com.memcoach.agent.tool.handlers.MemoryToolHandler
 import cn.com.memcoach.agent.tool.handlers.PDFToolHandler
 import cn.com.memcoach.agent.tool.handlers.SystemToolHandler
+// import cn.com.memcoach.agent.tool.handlers.VocabularyParseToolHandler
+import cn.com.memcoach.agent.tool.handlers.VocabularyToolHandler
 import cn.com.memcoach.agent.tool.handlers.WebSearchToolHandler
+import cn.com.memcoach.agent.tool.handlers.WrongBookToolHandler
 import cn.com.memcoach.agent.tool.mcp.RemoteMcpClient
 import cn.com.memcoach.channel.MemCoachChannelBridge
 import cn.com.memcoach.channel.NativeEventSink
@@ -60,6 +63,9 @@ class MainActivity : FlutterActivity() {
 
         val toolRouter = AgentToolRouter().apply {
             register(ExamToolHandler(database.examQuestionDao(), database.studyRecordDao(), database.userMasteryDao()))
+            register(WrongBookToolHandler(database.answerRecordDao(), database.examQuestionDao()))
+            register(VocabularyToolHandler(database.vocabularyDao(), database.vocabularyReviewDao()))
+            // register(VocabularyParseToolHandler(database.vocabularyDao(), llmClient))  // TODO: 修复 LLM 调用后启用
             register(KnowledgeToolHandler(database.knowledgeNodeDao(), database.knowledgeEdgeDao()))
             register(MemoryToolHandler(database.userMasteryDao(), database.knowledgeNodeDao()))
             register(PDFToolHandler(pipelineService, pdfRepository, activityScope))
@@ -106,6 +112,7 @@ class MainActivity : FlutterActivity() {
 
         bridge = MemCoachChannelBridge(
             orchestrator = orchestrator,
+            toolRouter = toolRouter,
             scope = activityScope,
             eventSink = object : NativeEventSink {
                 override fun success(event: Map<String, Any?>) {

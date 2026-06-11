@@ -2,8 +2,10 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../coach/presentation/coach_home_page.dart';
+import '../../exam/presentation/exam_bank_page.dart';
 import '../../insight/presentation/insight_page.dart';
 import '../../knowledge/presentation/knowledge_page.dart';
+import '../../vocabulary/presentation/vocabulary_page.dart';
 
 class AppShellPage extends StatefulWidget {
   const AppShellPage({super.key});
@@ -17,6 +19,8 @@ class _AppShellPageState extends State<AppShellPage> {
 
   static const _pages = [
     CoachHomePage(),
+    ExamBankPage(),
+    VocabularyPage(),
     InsightPage(),
     KnowledgePage(),
   ];
@@ -65,11 +69,14 @@ class _AppShellPageState extends State<AppShellPage> {
                         duration: const Duration(milliseconds: 300),
                         curve: Curves.easeOutBack,
                         alignment: Alignment(
-                          _currentIndex == 0 ? -1.0 : (_currentIndex == 1 ? 0.0 : 1.0),
+                          _currentIndex == 0 ? -1.0 :
+                          (_currentIndex == 1 ? -0.5 :
+                          (_currentIndex == 2 ? 0.0 :
+                          (_currentIndex == 3 ? 0.5 : 1.0))),
                           0.0,
                         ),
                         child: FractionallySizedBox(
-                          widthFactor: 1 / 3,
+                          widthFactor: 1 / 5,
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                             child: Container(
@@ -95,6 +102,22 @@ class _AppShellPageState extends State<AppShellPage> {
                           Expanded(
                             child: _buildTabItem(
                               index: 1,
+                              icon: Icons.school_outlined,
+                              selectedIcon: Icons.school_rounded,
+                              label: '真题',
+                            ),
+                          ),
+                          Expanded(
+                            child: _buildTabItem(
+                              index: 2,
+                              icon: Icons.book_outlined,
+                              selectedIcon: Icons.book_rounded,
+                              label: '单词',
+                            ),
+                          ),
+                          Expanded(
+                            child: _buildTabItem(
+                              index: 3,
                               icon: Icons.insights_outlined,
                               selectedIcon: Icons.insights_rounded,
                               label: '学情',
@@ -102,10 +125,10 @@ class _AppShellPageState extends State<AppShellPage> {
                           ),
                           Expanded(
                             child: _buildTabItem(
-                              index: 2,
-                              icon: Icons.account_tree_outlined,
-                              selectedIcon: Icons.account_tree_rounded,
-                              label: '知识库',
+                              index: 4,
+                              icon: Icons.menu_book_outlined,
+                              selectedIcon: Icons.menu_book_rounded,
+                              label: '知识',
                             ),
                           ),
                         ],

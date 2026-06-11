@@ -173,7 +173,25 @@ class MemCoachNativeBridge {
     final result = await _methodChannel.invokeMapMethod<String, dynamic>('home.getData');
     return result ?? {};
   }
-  
+
+  static Future<Map<String, dynamic>> callAgentTool(String toolName, Map<String, dynamic> arguments) async {
+    final result = await _methodChannel.invokeMapMethod<String, dynamic>('tool.call', {
+      'tool_name': toolName,
+      'arguments': arguments,
+    });
+
+    // 如果返回的data是JSON字符串，解析它
+    if (result?['data'] is String) {
+      try {
+        return jsonDecode(result!['data'] as String);
+      } catch (e) {
+        return result ?? {};
+      }
+    }
+
+    return result ?? {};
+  }
+
   // 会话管理方法
   
   /// 创建新会话
