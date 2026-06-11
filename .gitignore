@@ -57,3 +57,7 @@ Thumbs.db
 .env.*
 *.keystore
 *.jks
+
+# Claude 代理缓存与配置
+.claude/
+
