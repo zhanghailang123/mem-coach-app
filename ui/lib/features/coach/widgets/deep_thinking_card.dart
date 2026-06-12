@@ -388,7 +388,9 @@ class _DeepThinkingCardState extends State<DeepThinkingCard>
             decoration: BoxDecoration(
               border: Border(
                 left: BorderSide(
-                  color: const Color(0x1A000000),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white.withOpacity(0.15)
+                      : const Color(0x1A000000),
                   width: 1.0,
                 ),
               ),
@@ -459,9 +461,17 @@ class _DeepThinkingCardState extends State<DeepThinkingCard>
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              const Color(0xCCF1F8FF).withValues(alpha: 0.0),
-                              const Color(0xCCF1F8FF).withValues(alpha: 0.8),
-                              const Color(0xCCF1F8FF),
+                              (Theme.of(context).brightness == Brightness.dark
+                                      ? const Color(0xFF252530)
+                                      : const Color(0xCCF1F8FF))
+                                  .withValues(alpha: 0.0),
+                              (Theme.of(context).brightness == Brightness.dark
+                                      ? const Color(0xFF252530)
+                                      : const Color(0xCCF1F8FF))
+                                  .withValues(alpha: 0.8),
+                              (Theme.of(context).brightness == Brightness.dark
+                                  ? const Color(0xFF252530)
+                                  : const Color(0xCCF1F8FF)),
                             ],
                           ),
                         ),

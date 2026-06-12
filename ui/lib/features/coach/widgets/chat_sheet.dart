@@ -725,9 +725,11 @@ class _ChatSheetState extends State<ChatSheet> {
           curve: Curves.easeOut,
           padding: EdgeInsets.only(bottom: keyboardInset),
           child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            decoration: BoxDecoration(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF1D1D26)
+                  : Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
             ),
             child: Column(
               children: [
@@ -802,6 +804,7 @@ class _ChatSheetState extends State<ChatSheet> {
 
 
   Widget _buildHeader(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
       child: Row(
@@ -811,7 +814,8 @@ class _ChatSheetState extends State<ChatSheet> {
             onPressed: _running ? null : _showConversationHistorySheet,
             icon: const Icon(Icons.history_rounded),
             style: IconButton.styleFrom(
-              backgroundColor: Colors.grey.withOpacity(0.1),
+              backgroundColor: isDark ? Colors.white.withOpacity(0.06) : Colors.grey.withOpacity(0.1),
+              foregroundColor: isDark ? Colors.white70 : Colors.black87,
             ),
           ),
           Expanded(
@@ -820,7 +824,7 @@ class _ChatSheetState extends State<ChatSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.15),
+                  color: isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -831,7 +835,8 @@ class _ChatSheetState extends State<ChatSheet> {
             onPressed: () => Navigator.of(context).pop(),
             icon: const Icon(Icons.close_rounded),
             style: IconButton.styleFrom(
-              backgroundColor: Colors.grey.withOpacity(0.1),
+              backgroundColor: isDark ? Colors.white.withOpacity(0.06) : Colors.grey.withOpacity(0.1),
+              foregroundColor: isDark ? Colors.white70 : Colors.black87,
             ),
           ),
         ],
@@ -913,7 +918,9 @@ class _ChatSheetState extends State<ChatSheet> {
             child: Text(
               _status,
               style: TextStyle(
-                color: isFailure ? Colors.red.shade700 : Colors.black54,
+                color: isFailure
+                    ? Colors.red.shade700
+                    : (Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54),
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -1232,7 +1239,7 @@ class _ChatSheetState extends State<ChatSheet> {
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w800,
-              color: Colors.black87,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 8),
@@ -1240,7 +1247,7 @@ class _ChatSheetState extends State<ChatSheet> {
             '问我：今天该怎么学？',
             style: TextStyle(
               fontSize: 15,
-              color: Colors.black54,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
             ),
           ),
         ],
@@ -1259,7 +1266,7 @@ class _ChatSheetState extends State<ChatSheet> {
             '加载会话中...',
             style: TextStyle(
               fontSize: 15,
-              color: Colors.black54,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
             ),
           ),
         ],
@@ -1268,6 +1275,7 @@ class _ChatSheetState extends State<ChatSheet> {
   }
 
   Widget _buildInputBar() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.fromLTRB(
         16,
@@ -1275,11 +1283,12 @@ class _ChatSheetState extends State<ChatSheet> {
         8,
         12,
       ),
-
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1D1D26) : Colors.white,
         border: Border(
-          top: BorderSide(color: Colors.black.withOpacity(0.06)),
+          top: BorderSide(
+            color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06),
+          ),
         ),
       ),
       child: Column(
@@ -1295,7 +1304,8 @@ class _ChatSheetState extends State<ChatSheet> {
                   onPressed: _running ? null : _showQuickCommandSheet,
                   icon: const Icon(Icons.bolt_rounded),
                   style: IconButton.styleFrom(
-                    backgroundColor: Colors.grey.withOpacity(0.1),
+                    backgroundColor: isDark ? Colors.white.withOpacity(0.06) : Colors.grey.withOpacity(0.1),
+                    foregroundColor: isDark ? Colors.white70 : Colors.black87,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1304,7 +1314,8 @@ class _ChatSheetState extends State<ChatSheet> {
                   onPressed: _running ? null : _onVoiceInput,
                   icon: const Icon(Icons.mic_rounded),
                   style: IconButton.styleFrom(
-                    backgroundColor: Colors.grey.withOpacity(0.1),
+                    backgroundColor: isDark ? Colors.white.withOpacity(0.06) : Colors.grey.withOpacity(0.1),
+                    foregroundColor: isDark ? Colors.white70 : Colors.black87,
                   ),
                 ),
               ],
@@ -1318,7 +1329,7 @@ class _ChatSheetState extends State<ChatSheet> {
                 child: Container(
                   constraints: const BoxConstraints(maxHeight: 120),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF4F6FA),
+                    color: isDark ? const Color(0xFF252530) : const Color(0xFFF4F6FA),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: TextField(
@@ -1327,10 +1338,16 @@ class _ChatSheetState extends State<ChatSheet> {
                     minLines: 1,
                     maxLines: 4,
                     textInputAction: TextInputAction.newline,
-                    decoration: const InputDecoration(
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                    decoration: InputDecoration(
                       hintText: '输入消息...',
+                      hintStyle: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                      ),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     ),
                     onChanged: _handleInputChanged,
                     onSubmitted: (_) => _send(),

@@ -60,6 +60,7 @@ class MemCoachChannelBridge(
             "conversation.getMessages" -> getConversationMessages(arguments)
             "conversation.addMessage" -> addChatMessage(arguments)
             "conversation.updateMessageCount" -> updateConversationMessageCount(arguments)
+            "conversation.updateTitle" -> updateConversationTitle(arguments)
             "conversation.delete" -> deleteConversation(arguments)
             "pdf.delete" -> deletePdf(arguments)
             "pdf.getActiveJobs" -> getActivePdfJobs()
@@ -960,18 +961,35 @@ class MemCoachChannelBridge(
      * 更新会话消息数量
      */
     private suspend fun updateConversationMessageCount(arguments: Map<String, Any?>): Map<String, Any?> {
-        val conversationId = (arguments["conversationId"] as? Number)?.toLong() 
+        val conversationId = (arguments["conversationId"] as? Number)?.toLong()
             ?: return mapOf("error" to "conversationId is required")
-        
+
         val count = chatMessageDao.getCountByConversationId(conversationId)
         conversationDao.updateMessageCount(conversationId, count)
-        
+
         return mapOf(
             "conversation_id" to conversationId,
             "message_count" to count
         )
     }
-    
+
+    /**
+     * 更新会话标题
+     */
+    private suspend fun updateConversationTitle(arguments: Map<String, Any?>): Map<String, Any?> {
+        val conversationId = (arguments["conversationId"] as? Number)?.toLong()
+            ?: return mapOf("error" to "conversationId is required")
+        val title = arguments["title"] as? String
+            ?: return mapOf("error" to "title is required")
+
+        conversationDao.updateTitle(conversationId, title)
+
+        return mapOf(
+            "conversation_id" to conversationId,
+            "title" to title
+        )
+    }
+
     /**
      * 删除会话
      */

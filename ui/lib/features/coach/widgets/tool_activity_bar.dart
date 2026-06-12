@@ -90,7 +90,9 @@ class _ToolActivityBarState extends State<ToolActivityBar>
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF252530)
+            : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -127,7 +129,9 @@ class _ToolActivityBarState extends State<ToolActivityBar>
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: _expanded ? FontWeight.w500 : FontWeight.normal,
-                  color: _expanded ? Color(0xFF212121) : Colors.grey.shade700,
+                  color: _expanded
+                      ? Theme.of(context).colorScheme.onSurface
+                      : Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -177,9 +181,9 @@ class _ToolActivityBarState extends State<ToolActivityBar>
           Expanded(
             child: Text(
               activity.toolName,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: Color(0xFF757575),
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

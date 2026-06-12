@@ -32,7 +32,7 @@ class MarkdownBubble extends StatelessWidget {
             decoration: BoxDecoration(
               color: isUser
                   ? const Color(0xFF5B5FEF)
-                  : const Color(0xFFF0F2F5),
+                  : (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF252530) : const Color(0xFFF0F2F5)),
               borderRadius: BorderRadius.only(
                 topLeft: const Radius.circular(20),
                 topRight: const Radius.circular(20),
@@ -57,8 +57,8 @@ class MarkdownBubble extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 8, left: 4, right: 4),
               child: Text(
                 _formatTimestamp(message.timestamp!),
-                style: const TextStyle(
-                  color: Colors.black38,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
                   fontSize: 11,
                 ),
               ),
@@ -90,10 +90,14 @@ class MarkdownBubble extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 8),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFFE3F2FD),
+          color: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF1E293B)
+              : const Color(0xFFE3F2FD),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: const Color(0xFFBBDEFB),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF334155)
+                : const Color(0xFFBBDEFB),
             width: 1,
           ),
         ),
@@ -103,14 +107,18 @@ class MarkdownBubble extends StatelessWidget {
             Icon(
               Icons.info_outline,
               size: 16,
-              color: const Color(0xFF1976D2),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF93C5FD)
+                  : const Color(0xFF1976D2),
             ),
             const SizedBox(width: 8),
             Flexible(
               child: Text(
                 content,
-                style: const TextStyle(
-                  color: Color(0xFF1976D2),
+                style: TextStyle(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF93C5FD)
+                      : const Color(0xFF1976D2),
                   fontSize: 13,
                   height: 1.4,
                 ),
@@ -143,7 +151,7 @@ class MarkdownBubble extends StatelessWidget {
             Text(
               '思考中...',
               style: TextStyle(
-                color: Colors.black54,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                 fontSize: 14,
                 fontStyle: FontStyle.italic,
               ),

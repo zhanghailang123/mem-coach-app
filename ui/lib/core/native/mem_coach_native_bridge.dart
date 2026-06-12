@@ -262,7 +262,18 @@ class MemCoachNativeBridge {
       'conversationId': conversationId,
     });
   }
-  
+
+  /// 更新会话标题
+  static Future<void> updateConversationTitle({
+    required int conversationId,
+    required String title,
+  }) async {
+    await _methodChannel.invokeMethod<void>('conversation.updateTitle', {
+      'conversationId': conversationId,
+      'title': title,
+    });
+  }
+
   /// 删除会话
   static Future<void> deleteConversation({
     required int conversationId,
