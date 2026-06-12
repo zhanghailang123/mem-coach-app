@@ -28,29 +28,28 @@ class MarkdownBubble extends StatelessWidget {
             isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Container(
-              margin: const EdgeInsets.only(bottom: 4),
-              decoration: BoxDecoration(
-                color: isUser
-                    ? const Color(0xFF5B5FEF)
-                    : const Color(0xFFF0F2F5),
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(20),
-                  topRight: const Radius.circular(20),
-                  bottomLeft: Radius.circular(isUser ? 20 : 6),
-                  bottomRight: Radius.circular(isUser ? 6 : 20),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+            margin: const EdgeInsets.only(bottom: 4),
+            decoration: BoxDecoration(
+              color: isUser
+                  ? const Color(0xFF5B5FEF)
+                  : const Color(0xFFF0F2F5),
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(20),
+                topRight: const Radius.circular(20),
+                bottomLeft: Radius.circular(isUser ? 20 : 6),
+                bottomRight: Radius.circular(isUser ? 6 : 20),
               ),
-              child: isUser
-                  ? _buildUserBubble(content, context)
-                  : _buildAssistantBubble(content, context),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
+            child: isUser
+                ? _buildUserBubble(content, context)
+                : _buildAssistantBubble(content, context),
           ),
           // 时间戳显示
           if (message.timestamp != null)
@@ -58,7 +57,7 @@ class MarkdownBubble extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 8, left: 4, right: 4),
               child: Text(
                 _formatTimestamp(message.timestamp!),
-                style: TextStyle(
+                style: const TextStyle(
                   color: Colors.black38,
                   fontSize: 11,
                 ),

@@ -187,4 +187,3 @@ void _showThemeSelector(BuildContext context, WidgetRef ref, ThemeMode current) 
     ),
   );
 }
-}

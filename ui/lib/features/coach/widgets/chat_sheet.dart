@@ -10,6 +10,7 @@ import 'tool_activity_bar.dart';
 import 'deep_thinking_card.dart';
 import 'slash_command_panel.dart';
 import '../utils/deep_thinking_parser.dart';
+import '../utils/agent_stream_reducer.dart';
 import 'tool_call_chip.dart';
 
 /// 全屏沉浸式聊天 Sheet
@@ -1132,6 +1133,7 @@ class _ChatSheetState extends State<ChatSheet> {
             _ChatRole.assistant => 'assistant',
             _ChatRole.tool => 'tool',
             _ChatRole.system => 'system',
+            _ChatRole.toolChip => 'system',
           };
           return <String, dynamic>{
             'role': role,
