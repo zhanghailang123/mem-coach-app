@@ -72,6 +72,10 @@ data class Vocabulary(
             childColumns = ["vocab_id"],
             onDelete = ForeignKey.CASCADE
         )
+    ],
+    indices = [
+        Index(value = ["vocab_id"], name = "idx_vocab_review_vocab_id"),
+        Index(value = ["created_at"], name = "idx_vocab_review_created_at")
     ]
 )
 data class VocabularyReview(

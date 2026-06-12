@@ -96,6 +96,8 @@ def migrate_vocabulary():
     cursor.execute("CREATE INDEX idx_vocab_word ON vocabulary(word)")
     cursor.execute("CREATE INDEX idx_vocab_status ON vocabulary(status)")
     cursor.execute("CREATE INDEX idx_vocab_next_review ON vocabulary(next_review_at)")
+    cursor.execute("CREATE INDEX idx_vocab_review_vocab_id ON vocabulary_reviews(vocab_id)")
+    cursor.execute("CREATE INDEX idx_vocab_review_created_at ON vocabulary_reviews(created_at)")
 
     # 迁移单词
     count = 0

@@ -22,6 +22,12 @@ interface VocabularyDao {
     @Query("SELECT * FROM vocabulary WHERE word = :word LIMIT 1")
     suspend fun getByWord(word: String): Vocabulary?
 
+    @Query("SELECT * FROM vocabulary WHERE lower(word) = lower(:word) LIMIT 1")
+    suspend fun getByWordIgnoreCase(word: String): Vocabulary?
+
+    @Query("DELETE FROM vocabulary WHERE id = :id")
+    suspend fun deleteById(id: String): Int
+
     /** 获取待复习单词（间隔重复算法） */
     @Query("""
         SELECT * FROM vocabulary
@@ -46,6 +52,9 @@ interface VocabularyDao {
     /** 统计 */
     @Query("SELECT COUNT(*) FROM vocabulary WHERE status = :status")
     suspend fun countByStatus(status: String): Int
+
+    @Query("SELECT COUNT(*) FROM vocabulary")
+    suspend fun countAll(): Int
 }
 
 @Dao

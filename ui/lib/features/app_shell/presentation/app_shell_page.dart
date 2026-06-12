@@ -77,12 +77,12 @@ class _AppShellPageState extends State<AppShellPage> {
                         curve: Curves.easeOutBack,
                         alignment: Alignment(
                           _currentIndex == 0 ? -1.0 :
-                          (_currentIndex == 1 ? -0.33 :
-                          (_currentIndex == 2 ? 0.33 : 1.0)),
+                          (_currentIndex == 1 ? -0.5 :
+                          (_currentIndex == 2 ? 0.5 : 1.0)),
                           0.0,
                         ),
                         child: FractionallySizedBox(
-                          widthFactor: 1 / 4,
+                          widthFactor: 1 / 5,
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                             child: Container(
@@ -112,6 +112,10 @@ class _AppShellPageState extends State<AppShellPage> {
                               selectedIcon: Icons.school_rounded,
                               label: '真题',
                             ),
+                          ),
+                          // 中间占位空槽，为 AI Agent 悬浮按钮预留空间
+                          const Expanded(
+                            child: SizedBox.shrink(),
                           ),
                           Expanded(
                             child: _buildTabItem(

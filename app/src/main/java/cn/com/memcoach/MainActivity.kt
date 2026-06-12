@@ -10,6 +10,7 @@ import cn.com.memcoach.agent.llm.AgentLlmRouter
 import cn.com.memcoach.agent.llm.OpenAICompatibleAgentLlmClient
 import cn.com.memcoach.agent.memory.DailyMemoryService
 import cn.com.memcoach.agent.memory.LongTermMemoryService
+import cn.com.memcoach.agent.skill.StudySkillRegistry
 import cn.com.memcoach.agent.tool.handlers.DailyMemoryToolHandler
 import cn.com.memcoach.agent.tool.handlers.ExamToolHandler
 import cn.com.memcoach.agent.tool.handlers.KnowledgeToolHandler
@@ -32,6 +33,7 @@ import cn.com.memcoach.channel.NativeEventSink
 import cn.com.memcoach.data.AppDatabase
 import cn.com.memcoach.pdf.PdfDocumentRepository
 import cn.com.memcoach.pipeline.PdfPipelineService
+import cn.com.memcoach.study.AnswerSubmissionRecorder
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -45,6 +47,7 @@ import kotlinx.coroutines.launch
 class MainActivity : FlutterActivity() {
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var eventSink: EventChannel.EventSink? = null
+    private val pendingAgentEvents = mutableListOf<Map<String, Any?>>()
     private lateinit var bridge: MemCoachChannelBridge
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -55,9 +58,18 @@ class MainActivity : FlutterActivity() {
         
         val llmClient = MemCoachApplication.instance.llmClient
         val pipelineService = MemCoachApplication.instance.pipelineService
+        val answerSubmissionRecorder = AnswerSubmissionRecorder(
+            answerRecordDao = database.answerRecordDao(),
+            studyRecordDao = database.studyRecordDao(),
+            userMasteryDao = database.userMasteryDao(),
+            knowledgeNodeDao = database.knowledgeNodeDao(),
+            examQuestionDao = database.examQuestionDao()
+        )
 
         // 初始化记忆服务
         val memoryDir = java.io.File(applicationContext.filesDir, "memory")
+        val skillsDir = java.io.File(applicationContext.filesDir, "skills")
+        val skillRegistry = StudySkillRegistry(applicationContext, skillsDir)
         val dailyMemoryService = DailyMemoryService(
             memoryDir = memoryDir,
             studyRecordDao = database.studyRecordDao(),
@@ -67,8 +79,8 @@ class MainActivity : FlutterActivity() {
         val longTermMemoryService = LongTermMemoryService(memoryDir)
 
         val toolRouter = AgentToolRouter().apply {
-            register(ExamToolHandler(database.examQuestionDao(), database.studyRecordDao(), database.userMasteryDao()))
-            register(WrongBookToolHandler(database.answerRecordDao(), database.examQuestionDao()))
+            register(ExamToolHandler(database.examQuestionDao(), answerSubmissionRecorder))
+            register(WrongBookToolHandler(database.answerRecordDao(), database.examQuestionDao(), answerSubmissionRecorder))
             register(VocabularyToolHandler(database.vocabularyDao(), database.vocabularyReviewDao()))
             // register(VocabularyParseToolHandler(database.vocabularyDao(), llmClient))  // TODO: 修复 LLM 调用后启用
             register(KnowledgeToolHandler(database.knowledgeNodeDao(), database.knowledgeEdgeDao()))
@@ -120,7 +132,8 @@ class MainActivity : FlutterActivity() {
             stateMachine = studyStateMachine,
             llmRouter = llmRouter,
             dailyMemoryService = dailyMemoryService,
-            orchestratorScope = activityScope
+            orchestratorScope = activityScope,
+            skillRegistry = skillRegistry
         )
 
 
@@ -131,7 +144,19 @@ class MainActivity : FlutterActivity() {
             eventSink = object : NativeEventSink {
                 override fun success(event: Map<String, Any?>) {
                     activityScope.launch(Dispatchers.Main.immediate) {
-                        eventSink?.success(event)
+                        val sink = eventSink
+                        if (sink != null) {
+                            sink.success(event)
+                        } else {
+                            pendingAgentEvents.add(event)
+                            val type = event["type"]?.toString()
+                            if (type == "complete" || type == "error") {
+                                pendingAgentEvents.clear()
+                            }
+                            if (pendingAgentEvents.size > 200) {
+                                pendingAgentEvents.removeAt(0)
+                            }
+                        }
                     }
                 }
 
@@ -149,11 +174,13 @@ class MainActivity : FlutterActivity() {
             },
             studyRecordDao = database.studyRecordDao(),
             userMasteryDao = database.userMasteryDao(),
+            answerSubmissionRecorder = answerSubmissionRecorder,
             pdfRepository = pdfRepository,
             examQuestionDao = database.examQuestionDao(),
             knowledgeNodeDao = database.knowledgeNodeDao(),
             conversationDao = database.conversationDao(),
             chatMessageDao = database.chatMessageDao(),
+            agentEventDao = database.agentEventDao(),
             pipelineService = pipelineService,
             dailyMemoryService = dailyMemoryService,
             longTermMemoryService = longTermMemoryService
@@ -176,6 +203,13 @@ class MainActivity : FlutterActivity() {
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     eventSink = events
+                    if (events != null && pendingAgentEvents.isNotEmpty()) {
+                        val replayEvents = pendingAgentEvents.toList()
+                        pendingAgentEvents.clear()
+                        replayEvents.forEach { event ->
+                            events.success(event)
+                        }
+                    }
                 }
 
                 override fun onCancel(arguments: Any?) {

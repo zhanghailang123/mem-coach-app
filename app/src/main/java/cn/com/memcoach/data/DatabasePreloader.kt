@@ -24,6 +24,7 @@ class DatabasePreloader(
         // 立即在当前线程预加载（onCreate 在事务中）
         preloadExamQuestions(db)
         preloadVocabulary(db)
+        preloadKnowledge(db)
     }
 
     override fun onOpen(db: SupportSQLiteDatabase) {
@@ -32,6 +33,7 @@ class DatabasePreloader(
         // 兼容已经安装过但 exam_questions 为空或只导入了部分数据的本地库。
         preloadExamQuestions(db)
         preloadVocabulary(db)
+        preloadKnowledge(db)
     }
 
     private fun preloadExamQuestions(db: SupportSQLiteDatabase) {
@@ -327,6 +329,82 @@ class DatabasePreloader(
             SET parse_status = 'parsed'
             WHERE parse_status IS NULL OR parse_status = '' OR parse_status = 'imported'
         """.trimIndent())
+    }
+
+    private fun preloadKnowledge(db: SupportSQLiteDatabase) {
+        try {
+            val assetDbPath = "knowledge.db"
+
+            android.util.Log.i("DatabasePreloader", "开始预加载知识点...")
+
+            val assetsList = context.assets.list("") ?: emptyArray()
+            if (!assetsList.contains(assetDbPath)) {
+                android.util.Log.w("DatabasePreloader", "未找到knowledge.db，跳过预加载")
+                return
+            }
+
+            val existingCount = db.query(
+                "SELECT COUNT(*) FROM knowledge_nodes"
+            ).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getInt(0) else 0
+            }
+
+            if (existingCount > 0) {
+                android.util.Log.i("DatabasePreloader", "知识点已存在 $existingCount 条，跳过")
+                return
+            }
+
+            // 复制到临时文件
+            val tempFile = File(context.cacheDir, "knowledge_temp.db")
+            context.assets.open(assetDbPath).use { input ->
+                FileOutputStream(tempFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+
+            val tempDb = android.database.sqlite.SQLiteDatabase.openDatabase(
+                tempFile.absolutePath,
+                null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READONLY
+            )
+
+            val cursor = tempDb.rawQuery("SELECT * FROM knowledge_nodes", null)
+            var count = 0
+
+            val insertSql = """
+                INSERT OR IGNORE INTO knowledge_nodes
+                (id, name, subject, chapter, parent_id, description, content, exam_frequency, sort_weight)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getStringOrNull("id") ?: continue
+                val name = cursor.getStringOrNull("name") ?: continue
+                val subject = cursor.getStringOrNull("subject") ?: continue
+
+                db.execSQL(insertSql, arrayOf(
+                    id,
+                    name,
+                    subject,
+                    cursor.getStringOrNull("chapter"),
+                    cursor.getStringOrNull("parent_id"),
+                    cursor.getStringOrNull("description"),
+                    cursor.getStringOrNull("content"),
+                    cursor.getIntOrNull("exam_frequency") ?: 0,
+                    cursor.getIntOrNull("sort_weight") ?: 0
+                ))
+                count++
+            }
+
+            cursor.close()
+            tempDb.close()
+            tempFile.delete()
+
+            android.util.Log.i("DatabasePreloader", "✓ 成功预加载 $count 条知识点")
+
+        } catch (e: Exception) {
+            android.util.Log.e("DatabasePreloader", "预加载知识点失败: ${e.message}", e)
+        }
     }
 
     private fun Cursor.getStringOrNull(columnName: String): String? {

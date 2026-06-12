@@ -20,7 +20,6 @@ class _ExamBankPageState extends State<ExamBankPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String _selectedSubject = 'logic';
-  int? _selectedYear;
 
   @override
   void initState() {
@@ -50,9 +49,14 @@ class _ExamBankPageState extends State<ExamBankPage>
                 controller: _tabController,
                 isScrollable: true,
                 labelColor: const Color(0xFF5B5FEF),
-                unselectedLabelColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
-                unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13.5),
+                unselectedLabelColor: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.6),
+                labelStyle: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 14.5),
+                unselectedLabelStyle: const TextStyle(
+                    fontWeight: FontWeight.w500, fontSize: 13.5),
                 indicator: const UnderlineTabIndicator(
                   borderSide: BorderSide(color: Color(0xFF5B5FEF), width: 3),
                   insets: EdgeInsets.symmetric(horizontal: 8),
@@ -86,7 +90,10 @@ class _ExamBankPageState extends State<ExamBankPage>
         children: [
           Text(
             '备考模块',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.onSurface),
+            style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+                color: Theme.of(context).colorScheme.onSurface),
           ),
           const SizedBox(height: 12),
           // 三个科目卡片排版
@@ -131,11 +138,20 @@ class _ExamBankPageState extends State<ExamBankPage>
             children: [
               Text(
                 '选择年份 (${_subjectName(_selectedSubject)})',
-                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.onSurface),
+                style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                    color: Theme.of(context).colorScheme.onSurface),
               ),
               Text(
                 '历年全国联考真题',
-                style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.bold),
+                style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.5),
+                    fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -176,7 +192,9 @@ class _ExamBankPageState extends State<ExamBankPage>
     return Container(
       height: isWide ? 85 : 125,
       decoration: BoxDecoration(
-        color: isSelected ? null : (isDark ? const Color(0xFF1D1D26) : Colors.white),
+        color: isSelected
+            ? null
+            : (isDark ? const Color(0xFF1D1D26) : Colors.white),
         gradient: isSelected
             ? LinearGradient(
                 colors: colors,
@@ -186,14 +204,16 @@ class _ExamBankPageState extends State<ExamBankPage>
             : null,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isSelected ? Colors.transparent : (isDark ? const Color(0xFF2C2C35) : const Color(0xFFE2E6F5)),
+          color: isSelected
+              ? Colors.transparent
+              : (isDark ? const Color(0xFF2C2C35) : const Color(0xFFE2E6F5)),
           width: 1.0,
         ),
         boxShadow: [
           BoxShadow(
             color: isSelected
-                ? colors[0].withOpacity(0.22)
-                : Colors.black.withOpacity(0.015),
+                ? colors[0].withValues(alpha: 0.22)
+                : Colors.black.withValues(alpha: 0.015),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -216,10 +236,14 @@ class _ExamBankPageState extends State<ExamBankPage>
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: isSelected ? Colors.white.withOpacity(0.2) : colors[0].withOpacity(0.08),
+                          color: isSelected
+                              ? Colors.white.withValues(alpha: 0.2)
+                              : colors[0].withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(icon, color: isSelected ? Colors.white : colors[0], size: 22),
+                        child: Icon(icon,
+                            color: isSelected ? Colors.white : colors[0],
+                            size: 22),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -232,7 +256,9 @@ class _ExamBankPageState extends State<ExamBankPage>
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
-                                color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurface,
+                                color: isSelected
+                                    ? Colors.white
+                                    : Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -240,7 +266,12 @@ class _ExamBankPageState extends State<ExamBankPage>
                               desc,
                               style: TextStyle(
                                 fontSize: 10.5,
-                                color: isSelected ? Colors.white70 : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                color: isSelected
+                                    ? Colors.white70
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.5),
                               ),
                             ),
                           ],
@@ -266,10 +297,14 @@ class _ExamBankPageState extends State<ExamBankPage>
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: isSelected ? Colors.white.withOpacity(0.2) : colors[0].withOpacity(0.08),
+                              color: isSelected
+                                  ? Colors.white.withValues(alpha: 0.2)
+                                  : colors[0].withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: Icon(icon, color: isSelected ? Colors.white : colors[0], size: 20),
+                            child: Icon(icon,
+                                color: isSelected ? Colors.white : colors[0],
+                                size: 20),
                           ),
                           Text(
                             subtitle,
@@ -289,7 +324,9 @@ class _ExamBankPageState extends State<ExamBankPage>
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
-                              color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurface,
+                              color: isSelected
+                                  ? Colors.white
+                                  : Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -297,7 +334,12 @@ class _ExamBankPageState extends State<ExamBankPage>
                             desc,
                             style: TextStyle(
                               fontSize: 9.5,
-                              color: isSelected ? Colors.white70 : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                              color: isSelected
+                                  ? Colors.white70
+                                  : Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.5),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -324,7 +366,7 @@ class _ExamBankPageState extends State<ExamBankPage>
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.01),
+            color: Colors.black.withValues(alpha: 0.01),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -351,7 +393,10 @@ class _ExamBankPageState extends State<ExamBankPage>
                   '年联考真题',
                   style: TextStyle(
                     fontSize: 9,
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.5),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -365,7 +410,8 @@ class _ExamBankPageState extends State<ExamBankPage>
 
   Widget _buildWrongBookView() {
     return FutureBuilder<Map<String, dynamic>>(
-      future: MemCoachNativeBridge.callAgentTool('wrong_book_list', {'limit': 50}),
+      future:
+          MemCoachNativeBridge.callAgentTool('wrong_book_list', {'limit': 50}),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
@@ -377,9 +423,11 @@ class _ExamBankPageState extends State<ExamBankPage>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: const [
-                Icon(Icons.assignment_turned_in_outlined, size: 44, color: Colors.black12),
+                Icon(Icons.assignment_turned_in_outlined,
+                    size: 44, color: Colors.black12),
                 SizedBox(height: 12),
-                Text('暂无错题记录，继续保持！', style: TextStyle(color: Colors.black38, fontSize: 13)),
+                Text('暂无错题记录，继续保持！',
+                    style: TextStyle(color: Colors.black38, fontSize: 13)),
               ],
             ),
           );
@@ -406,7 +454,7 @@ class _ExamBankPageState extends State<ExamBankPage>
         border: Border.all(color: const Color(0xFFFFE9EC), width: 1.0),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFEF476F).withOpacity(0.015),
+            color: const Color(0xFFEF476F).withValues(alpha: 0.015),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -425,9 +473,10 @@ class _ExamBankPageState extends State<ExamBankPage>
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEF476F).withOpacity(0.08),
+                        color: const Color(0xFFEF476F).withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -467,7 +516,8 @@ class _ExamBankPageState extends State<ExamBankPage>
 
   Widget _buildFavoriteView() {
     return FutureBuilder<Map<String, dynamic>>(
-      future: MemCoachNativeBridge.callAgentTool('exam_favorite_list', {'limit': 100}),
+      future: MemCoachNativeBridge.callAgentTool(
+          'exam_favorite_list', {'limit': 100}),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
@@ -479,7 +529,8 @@ class _ExamBankPageState extends State<ExamBankPage>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: const [
-                Icon(Icons.star_border_rounded, size: 48, color: Colors.black12),
+                Icon(Icons.star_border_rounded,
+                    size: 48, color: Colors.black12),
                 SizedBox(height: 12),
                 Text(
                   '暂无收藏题目',
@@ -515,7 +566,7 @@ class _ExamBankPageState extends State<ExamBankPage>
         border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.015),
+            color: Colors.black.withValues(alpha: 0.015),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -534,9 +585,10 @@ class _ExamBankPageState extends State<ExamBankPage>
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF5B5FEF).withOpacity(0.08),
+                        color: const Color(0xFF5B5FEF).withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -600,20 +652,29 @@ class _ExamBankPageState extends State<ExamBankPage>
 
   String _subjectName(String subject) {
     switch (subject) {
-      case 'math': return '数学';
-      case 'logic': return '逻辑';
-      case 'writing': return '写作';
-      default: return subject;
+      case 'math':
+        return '数学';
+      case 'logic':
+        return '逻辑';
+      case 'writing':
+        return '写作';
+      default:
+        return subject;
     }
   }
 
   String _sectionName(String? section) {
     switch (section) {
-      case 'math': return '数学';
-      case 'logic': return '逻辑';
-      case 'writing': return '写作';
-      case 'english': return '英语';
-      default: return section ?? '';
+      case 'math':
+        return '数学';
+      case 'logic':
+        return '逻辑';
+      case 'writing':
+        return '写作';
+      case 'english':
+        return '英语';
+      default:
+        return section ?? '';
     }
   }
 }
@@ -661,6 +722,7 @@ class _QuestionListPageState extends State<QuestionListPage> {
             }
           }
         }
+
         if (route.animation!.isCompleted) {
           setState(() {
             _transitionEnded = true;
@@ -717,10 +779,11 @@ class _QuestionListPageState extends State<QuestionListPage> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+                  border:
+                      Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.015),
+                      color: Colors.black.withValues(alpha: 0.015),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
@@ -733,7 +796,8 @@ class _QuestionListPageState extends State<QuestionListPage> {
                       await Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => QuestionDetailPage(questionId: q['id']),
+                          builder: (_) =>
+                              QuestionDetailPage(questionId: q['id']),
                         ),
                       );
                     },
@@ -745,7 +809,8 @@ class _QuestionListPageState extends State<QuestionListPage> {
                             width: 38,
                             height: 38,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF5B5FEF).withOpacity(0.08),
+                              color: const Color(0xFF5B5FEF)
+                                  .withValues(alpha: 0.08),
                               shape: BoxShape.circle,
                             ),
                             child: Center(
@@ -773,7 +838,8 @@ class _QuestionListPageState extends State<QuestionListPage> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          const Icon(Icons.chevron_right_rounded, color: Colors.black38),
+                          const Icon(Icons.chevron_right_rounded,
+                              color: Colors.black38),
                         ],
                       ),
                     ),
@@ -794,17 +860,22 @@ class _QuestionListPageState extends State<QuestionListPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.info_outline_rounded, size: 34, color: Colors.black38),
+            const Icon(Icons.info_outline_rounded,
+                size: 34, color: Colors.black38),
             const SizedBox(height: 12),
             Text(
               title,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black87),
+              style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.black87),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               message,
-              style: const TextStyle(fontSize: 13.5, height: 1.5, color: Colors.black45),
+              style: const TextStyle(
+                  fontSize: 13.5, height: 1.5, color: Colors.black45),
               textAlign: TextAlign.center,
             ),
           ],
@@ -843,11 +914,13 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
   bool _submitting = false;
   bool _isFavorited = false; // 是否已收藏
   bool _transitionEnded = false; // 转场动画是否结束
+  late final DateTime _enteredAt;
   late final Future<Map<String, dynamic>> _questionFuture;
 
   @override
   void initState() {
     super.initState();
+    _enteredAt = DateTime.now();
     _questionFuture =
         MemCoachNativeBridge.callAgentTool('exam_question_explain', {
       'question_id': widget.questionId,
@@ -859,13 +932,22 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
 
   void _setupPageContext() async {
     final data = await _questionFuture;
+    if (data['error'] != null) return;
+    final options = _parseOptions(data['options']);
     PageContextManager().setContext({
       'type': 'question',
       'question_id': widget.questionId,
       'stem': data['stem'],
+      'options': options.entries
+          .map((entry) => '${entry.key}. ${entry.value}')
+          .join('\n'),
+      'answer': _normalizeAnswer(data['answer']),
+      'explanation': data['explanation'],
       'year': data['year'],
       'subject': data['subject'],
       'section': data['section'],
+      'topic': data['topic'],
+      'difficulty': data['difficulty'],
     });
   }
 
@@ -877,7 +959,8 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
 
   void _checkFavoriteStatus() async {
     try {
-      final res = await MemCoachNativeBridge.callAgentTool('exam_favorite_check', {
+      final res =
+          await MemCoachNativeBridge.callAgentTool('exam_favorite_check', {
         'question_id': widget.questionId,
       });
       if (mounted && res['favorited'] != null) {
@@ -903,6 +986,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
             }
           }
         }
+
         if (route.animation!.isCompleted) {
           setState(() {
             _transitionEnded = true;
@@ -933,7 +1017,8 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
             SnackBar(
               content: Text(_isFavorited ? '已加入收藏' : '已取消收藏'),
               duration: const Duration(seconds: 1),
-              backgroundColor: _isFavorited ? const Color(0xFF5B5FEF) : Colors.black87,
+              backgroundColor:
+                  _isFavorited ? const Color(0xFF5B5FEF) : Colors.black87,
             ),
           );
         }
@@ -952,7 +1037,8 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFF),
       appBar: AppBar(
-        title: const Text('题目详情', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+        title: const Text('题目详情',
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
         elevation: 0,
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.black87,
@@ -1090,8 +1176,10 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color:
-                      Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -1140,7 +1228,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
       decoration: BoxDecoration(
         color: const Color(0xFFF4F6FA),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.black.withOpacity(0.04)),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
       ),
       child: Text(
         text,
@@ -1173,8 +1261,10 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                 decoration: BoxDecoration(
-                  color:
-                      Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(9),
                 ),
                 child: Text(
@@ -1300,9 +1390,9 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.22)),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1349,10 +1439,10 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
       Color borderColor;
       if (_showAnswer) {
         if (isCorrectAnswer) {
-          bgColor = const Color(0xFF20B486).withOpacity(0.08);
+          bgColor = const Color(0xFF20B486).withValues(alpha: 0.08);
           borderColor = const Color(0xFF20B486);
         } else if (isWrongSelection) {
-          bgColor = const Color(0xFFEF476F).withOpacity(0.08);
+          bgColor = const Color(0xFFEF476F).withValues(alpha: 0.08);
           borderColor = const Color(0xFFEF476F);
         } else {
           bgColor = Colors.grey.shade50;
@@ -1360,7 +1450,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
         }
       } else {
         bgColor = active
-            ? Theme.of(context).colorScheme.primary.withOpacity(0.08)
+            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.08)
             : Colors.grey.shade50;
         borderColor =
             active ? Theme.of(context).colorScheme.primary : Colors.transparent;
@@ -1391,7 +1481,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                       decoration: BoxDecoration(
                         color: active || isCorrectAnswer || isWrongSelection
                             ? Colors.transparent
-                            : Colors.black.withOpacity(0.04),
+                            : Colors.black.withValues(alpha: 0.04),
                         shape: BoxShape.circle,
                       ),
                       child: Center(
@@ -1548,18 +1638,15 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
   }
 
   Future<void> _submitAnswer(Map<String, dynamic> question) async {
-    final correctAnswer = _normalizeAnswer(question['answer']);
-    final isCorrect = _selectedAnswer == correctAnswer;
     setState(() => _submitting = true);
 
     try {
       // 提交答题记录
-      await MemCoachNativeBridge.callAgentTool('answer_submit', {
-        'question_id': widget.questionId,
-        'user_answer': _selectedAnswer,
-        'correct_answer': correctAnswer,
-        'is_correct': isCorrect,
-      });
+      await MemCoachNativeBridge.submitAnswer(
+        questionId: widget.questionId,
+        userAnswer: _selectedAnswer!,
+        timeSpentSeconds: DateTime.now().difference(_enteredAt).inSeconds,
+      );
 
       if (!mounted) return;
       setState(() {
@@ -1576,17 +1663,27 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
   }
 
   Widget _buildQuickActions() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1D1D26) : Colors.white,
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
+          if (!isDark)
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
         ],
+        border: isDark
+            ? const Border(
+                top: BorderSide(
+                  color: Color(0xFF2C2C35),
+                  width: 1.0,
+                ),
+              )
+            : null,
       ),
       child: Row(
         children: [
@@ -1594,11 +1691,13 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
             child: OutlinedButton.icon(
               onPressed: () {
                 final pageContext = PageContextManager().currentContext;
-                ChatSheet.show(context, pageContext: pageContext, initialText: '帮我讲解这道题');
+                ChatSheet.show(context,
+                    pageContext: pageContext, initialText: '帮我讲解这道题');
               },
               icon: const Icon(Icons.lightbulb_outline, size: 18),
               label: const Text('讲解'),
-              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+              style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12)),
             ),
           ),
           const SizedBox(width: 8),
@@ -1606,11 +1705,13 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
             child: OutlinedButton.icon(
               onPressed: () {
                 final pageContext = PageContextManager().currentContext;
-                ChatSheet.show(context, pageContext: pageContext, initialText: '推荐相似题目');
+                ChatSheet.show(context,
+                    pageContext: pageContext, initialText: '推荐相似题目');
               },
               icon: const Icon(Icons.compare_arrows, size: 18),
               label: const Text('相似题'),
-              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+              style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12)),
             ),
           ),
           const SizedBox(width: 8),
@@ -1618,11 +1719,13 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
             child: OutlinedButton.icon(
               onPressed: () {
                 final pageContext = PageContextManager().currentContext;
-                ChatSheet.show(context, pageContext: pageContext, initialText: '帮我总结知识点');
+                ChatSheet.show(context,
+                    pageContext: pageContext, initialText: '帮我总结知识点');
               },
               icon: const Icon(Icons.bookmark_outline, size: 18),
               label: const Text('总结'),
-              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+              style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12)),
             ),
           ),
         ],

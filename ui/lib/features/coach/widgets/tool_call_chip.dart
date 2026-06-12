@@ -24,11 +24,14 @@ class ToolCallChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasError = error != null && error!.trim().isNotEmpty;
+    final isSkill = toolName.startsWith('skill:');
     final accentColor = hasError
         ? const Color(0xFFFF453A)
-        : isRunning
-            ? const Color(0xFF0A84FF)
-            : const Color(0xFF34C759);
+        : isSkill
+            ? const Color(0xFF7C5CFF)
+            : isRunning
+                ? const Color(0xFF0A84FF)
+                : const Color(0xFF34C759);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -48,7 +51,9 @@ class ToolCallChip extends StatelessWidget {
                   Icon(
                     hasError
                         ? Icons.error_outline_rounded
-                        : Icons.description_outlined,
+                        : isSkill
+                            ? Icons.psychology_alt_rounded
+                            : Icons.description_outlined,
                     size: 16,
                     color: accentColor,
                   ),
@@ -84,6 +89,7 @@ class ToolCallChip extends StatelessWidget {
     final formattedArguments = _formatPayload(arguments);
     final formattedResult = _formatPayload(error ?? result);
     final hasError = error != null && error!.trim().isNotEmpty;
+    final isSkill = toolName.startsWith('skill:');
 
     showModalBottomSheet(
       context: context,
@@ -109,10 +115,14 @@ class ToolCallChip extends StatelessWidget {
                     Icon(
                       hasError
                           ? Icons.error_outline_rounded
-                          : Icons.description_outlined,
+                          : isSkill
+                              ? Icons.psychology_alt_rounded
+                              : Icons.description_outlined,
                       color: hasError
                           ? const Color(0xFFFF453A)
-                          : const Color(0xFF34C759),
+                          : isSkill
+                              ? const Color(0xFF7C5CFF)
+                              : const Color(0xFF34C759),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -150,14 +160,18 @@ class ToolCallChip extends StatelessWidget {
   Widget _buildMetaLine(BuildContext context, bool hasError) {
     final color = hasError
         ? const Color(0xFFFF453A)
-        : isRunning
-            ? const Color(0xFF0A84FF)
-            : const Color(0xFF34C759);
+        : toolName.startsWith('skill:')
+            ? const Color(0xFF7C5CFF)
+            : isRunning
+                ? const Color(0xFF0A84FF)
+                : const Color(0xFF34C759);
     final status = hasError
         ? '失败'
-        : isRunning
-            ? '执行中'
-            : '已完成';
+        : toolName.startsWith('skill:')
+            ? '已激活'
+            : isRunning
+                ? '执行中'
+                : '已完成';
     final durationText = duration == null ? null : _formatDuration(duration!);
 
     return Wrap(
@@ -250,6 +264,11 @@ class ToolCallChip extends StatelessWidget {
   }
 
   String _formatToolName(String name) {
+    if (name.startsWith('skill:')) {
+      final skillName = name.substring('skill:'.length).trim();
+      return skillName.isEmpty ? '学习策略' : '学习策略 · $skillName';
+    }
+
     // 简化工具名显示
     final Map<String, String> nameMap = {
       'exam_question_search': '查看考题搜索',

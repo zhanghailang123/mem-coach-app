@@ -21,50 +21,71 @@ class MarkdownBubble extends StatelessWidget {
       return _buildSystemMessage(content, context);
     }
 
-    return GestureDetector(
-      onLongPress: () => _showMessageMenu(context, isUser),
-      child: Column(
-        crossAxisAlignment:
-            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          Container(
-            margin: const EdgeInsets.only(bottom: 4),
-            decoration: BoxDecoration(
-              color: isUser
-                  ? const Color(0xFF5B5FEF)
-                  : (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF252530) : const Color(0xFFF0F2F5)),
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(20),
-                topRight: const Radius.circular(20),
-                bottomLeft: Radius.circular(isUser ? 20 : 6),
-                bottomRight: Radius.circular(isUser ? 6 : 20),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.of(context).size.width - 32;
+        final bubbleMaxWidth = isUser ? availableWidth * 0.82 : availableWidth;
+
+        return GestureDetector(
+          onLongPress: () => _showMessageMenu(context, isUser),
+          child: Align(
+            alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
+              child: Column(
+                crossAxisAlignment:
+                    isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 4),
+                    decoration: BoxDecoration(
+                      color: isUser
+                          ? const Color(0xFF5B5FEF)
+                          : (Theme.of(context).brightness == Brightness.dark
+                              ? const Color(0xFF252530)
+                              : const Color(0xFFF0F2F5)),
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(20),
+                        topRight: const Radius.circular(20),
+                        bottomLeft: Radius.circular(isUser ? 20 : 6),
+                        bottomRight: Radius.circular(isUser ? 6 : 20),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: isUser
+                        ? _buildUserBubble(content, context)
+                        : _buildAssistantBubble(content, context),
+                  ),
+                  // 时间戳显示
+                  if (message.timestamp != null)
+                    Padding(
+                      padding:
+                          const EdgeInsets.only(bottom: 8, left: 4, right: 4),
+                      child: Text(
+                        _formatTimestamp(message.timestamp!),
+                        style: TextStyle(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.4),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                ],
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
             ),
-            child: isUser
-                ? _buildUserBubble(content, context)
-                : _buildAssistantBubble(content, context),
           ),
-          // 时间戳显示
-          if (message.timestamp != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8, left: 4, right: 4),
-              child: Text(
-                _formatTimestamp(message.timestamp!),
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
-                  fontSize: 11,
-                ),
-              ),
-            ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -73,7 +94,7 @@ class MarkdownBubble extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: Text(
-        content.isEmpty ? '...' : content,
+        content.isEmpty ? '...' : _softWrapLongText(content),
         style: const TextStyle(
           color: Colors.white,
           fontSize: 15,
@@ -151,7 +172,10 @@ class MarkdownBubble extends StatelessWidget {
             Text(
               '思考中...',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.6),
                 fontSize: 14,
                 fontStyle: FontStyle.italic,
               ),
@@ -235,5 +259,19 @@ class MarkdownBubble extends StatelessWidget {
       // 更早：显示 MM-dd HH:mm
       return '${timestamp.month.toString().padLeft(2, '0')}-${timestamp.day.toString().padLeft(2, '0')} ${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
     }
+  }
+
+  String _softWrapLongText(String text) {
+    return text.replaceAllMapped(RegExp(r'\S{28,}'), (match) {
+      final value = match.group(0) ?? '';
+      if (value.isEmpty) return value;
+      final buffer = StringBuffer();
+      for (var i = 0; i < value.length; i++) {
+        buffer.write(value[i]);
+        final shouldBreak = (i + 1) % 16 == 0 && i != value.length - 1;
+        if (shouldBreak) buffer.write('\u200B');
+      }
+      return buffer.toString();
+    });
   }
 }

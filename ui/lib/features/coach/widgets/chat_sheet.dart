@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import '../../../core/widgets/ai_sparkle_logo.dart';
 import '../../../core/native/mem_coach_native_bridge.dart';
 import 'markdown_bubble.dart';
-import 'tool_activity_bar.dart';
 import 'deep_thinking_card.dart';
 import 'slash_command_panel.dart';
 import '../utils/deep_thinking_parser.dart';
@@ -85,10 +84,6 @@ class _ChatSheetState extends State<ChatSheet> {
   int? _conversationId;
   bool _isLoadingConversation = false;
 
-  // 工具活动状态
-  final List<ToolActivity> _toolActivities = [];
-  bool _toolBarExpanded = false;
-
   // 深度思考状态
   String _thinkingText = '';
   bool _isThinking = false;
@@ -99,7 +94,6 @@ class _ChatSheetState extends State<ChatSheet> {
   static const String _thinkingPlaceholder = '正在理解你的问题...';
 
   // 学习状态
-  String _currentState = '';
   String _currentStateName = '';
 
   // 斜杠命令状态
@@ -108,6 +102,7 @@ class _ChatSheetState extends State<ChatSheet> {
 
   // 重试状态
   String? _lastSentText;
+  bool _nativePersistsCurrentTurn = false;
 
   // 当前轮次工具调用历史，用于下一轮传回 Native 保留 ReAct 上下文
   final List<_ToolCallRecord> _currentTurnToolCalls = [];
@@ -126,7 +121,12 @@ class _ChatSheetState extends State<ChatSheet> {
           TextSelection.collapsed(offset: _controller.text.length);
     }
 
-    _sub = MemCoachNativeBridge.agentEvents.listen(
+    // 初始化会话
+    _initConversation();
+  }
+
+  void _subscribeAgentEvents() {
+    _sub ??= MemCoachNativeBridge.agentEvents.listen(
       _handleAgentEvent,
       onError: (Object error) {
         if (!mounted) return;
@@ -136,9 +136,6 @@ class _ChatSheetState extends State<ChatSheet> {
         });
       },
     );
-
-    // 初始化会话
-    _initConversation();
   }
 
   /// 初始化会话
@@ -149,6 +146,27 @@ class _ChatSheetState extends State<ChatSheet> {
     } else {
       // 创建新会话
       await _createNewConversation();
+    }
+    await _syncAgentRunningState();
+    _subscribeAgentEvents();
+  }
+
+  Future<void> _syncAgentRunningState() async {
+    try {
+      final running = await MemCoachNativeBridge.isAgentRunning();
+      if (!mounted || !running) return;
+      setState(() {
+        _running = true;
+        _status = 'Agent 正在后台生成...';
+        _isThinking = true;
+        if (_thinkingText.trim().isEmpty) {
+          _thinkingText = _thinkingPlaceholder;
+        }
+        _thinkingStage = 1;
+        _thinkingStartTime ??= DateTime.now().millisecondsSinceEpoch;
+      });
+    } catch (_) {
+      // 状态查询失败不影响聊天框使用，后续事件仍会正常接入。
     }
   }
 
@@ -211,6 +229,7 @@ class _ChatSheetState extends State<ChatSheet> {
             role: switch (role) {
               'assistant' => _ChatRole.assistant,
               'tool' => _ChatRole.tool,
+              'skill_chip' => _ChatRole.skillChip,
               'system' => _ChatRole.system,
               _ => _ChatRole.user,
             },
@@ -219,6 +238,12 @@ class _ChatSheetState extends State<ChatSheet> {
               msg['reasoning_content'] ?? msg['thinking_content'],
             ),
             toolCallId: msg['tool_call_id']?.toString(),
+            skillId: _nullableMessageText(msg['skill_id']),
+            skillConfidence: msg['skill_confidence'] is num
+                ? (msg['skill_confidence'] as num).toDouble()
+                : double.tryParse(msg['skill_confidence']?.toString() ?? ''),
+            skillTriggerReason:
+                _nullableMessageText(msg['skill_trigger_reason']),
             toolCalls: toolCalls,
             timestamp: timestamp,
           ));
@@ -253,9 +278,22 @@ class _ChatSheetState extends State<ChatSheet> {
     setState(() {
       switch (event.type) {
         case 'state_changed':
-          _currentState = event.state ?? '';
           _currentStateName = event.stateName ?? '';
           _status = '模式：$_currentStateName';
+          break;
+        case 'skill_activated':
+          final skill = _ActiveSkill.fromEvent(event);
+          if (skill != null && !_hasCurrentTurnSkillChip(skill)) {
+            _messages.add(_ChatMessage(
+              role: _ChatRole.skillChip,
+              content: skill.name,
+              timestamp: DateTime.now(),
+              skillId: skill.id,
+              skillConfidence: skill.confidence,
+              skillTriggerReason: skill.triggerReason,
+            ));
+            _status = '已激活策略：${skill.name}';
+          }
           break;
         case 'thinking_start':
           final effort = event.raw['effort']?.toString();
@@ -304,12 +342,6 @@ class _ChatSheetState extends State<ChatSheet> {
             arguments: event.arguments ?? '{}',
           ));
 
-          _toolActivities.add(ToolActivity(
-            toolName: event.toolName ?? 'unknown',
-            status: ToolActivityStatus.running,
-            summary: event.arguments?.toString(),
-            startTime: DateTime.now(),
-          ));
           break;
         case 'tool_call_complete':
           _status = '工具调用完成：${event.toolName ?? 'unknown'}';
@@ -335,11 +367,6 @@ class _ChatSheetState extends State<ChatSheet> {
               timestamp: DateTime.now(),
             ));
           }
-          _updateToolActivity(
-            event.toolName ?? 'unknown',
-            ToolActivityStatus.success,
-            result: event.result,
-          );
           break;
         case 'tool_call_error':
           _status = '工具调用失败：${event.toolName ?? 'unknown'}';
@@ -355,11 +382,6 @@ class _ChatSheetState extends State<ChatSheet> {
               break;
             }
           }
-          _updateToolActivity(
-            event.toolName ?? 'unknown',
-            ToolActivityStatus.error,
-            result: event.error,
-          );
           break;
         case 'chat_message':
           _status = 'Agent 正在回复...';
@@ -381,7 +403,9 @@ class _ChatSheetState extends State<ChatSheet> {
           _thinkingStage = 4;
           _thinkingEndTime = DateTime.now().millisecondsSinceEpoch;
           _attachThinkingToLastAssistantMessage();
-          _saveAssistantMessageToDatabase();
+          if (!_nativePersistsCurrentTurn) {
+            _saveAssistantMessageToDatabase();
+          }
           _thinkingStartTime = null;
           break;
         case 'error':
@@ -392,40 +416,15 @@ class _ChatSheetState extends State<ChatSheet> {
           _thinkingStage = 4;
           _thinkingEndTime = DateTime.now().millisecondsSinceEpoch;
           _attachThinkingToLastAssistantMessage();
-          _saveAssistantMessageToDatabase();
+          if (!_nativePersistsCurrentTurn) {
+            _saveAssistantMessageToDatabase();
+          }
           // 清空状态
           _thinkingText = '';
-          for (var i = 0; i < _toolActivities.length; i++) {
-            if (_toolActivities[i].status == ToolActivityStatus.running) {
-              _toolActivities[i] = _toolActivities[i].copyWith(
-                status: ToolActivityStatus.error,
-                endTime: DateTime.now(),
-              );
-            }
-          }
           break;
       }
     });
     _scrollToBottom();
-  }
-
-  void _updateToolActivity(
-    String toolName,
-    ToolActivityStatus status, {
-    String? result,
-  }) {
-    for (var i = _toolActivities.length - 1; i >= 0; i--) {
-      final activity = _toolActivities[i];
-      if (activity.toolName == toolName &&
-          activity.status == ToolActivityStatus.running) {
-        _toolActivities[i] = activity.copyWith(
-          status: status,
-          result: result,
-          endTime: DateTime.now(),
-        );
-        return;
-      }
-    }
   }
 
   bool _isMatchingToolChip(_ChatMessage message, AgentNativeEvent event) {
@@ -437,6 +436,21 @@ class _ChatSheetState extends State<ChatSheet> {
         message.toolDurationMs == null &&
         message.toolResult == null &&
         message.toolError == null;
+  }
+
+  bool _hasCurrentTurnSkillChip(_ActiveSkill skill) {
+    final lastUserIndex = _messages.lastIndexWhere(
+      (message) => message.role == _ChatRole.user,
+    );
+    final startIndex = lastUserIndex < 0 ? 0 : lastUserIndex + 1;
+    for (var i = startIndex; i < _messages.length; i++) {
+      final message = _messages[i];
+      if (message.role != _ChatRole.skillChip) continue;
+      final sameId = message.skillId != null && message.skillId == skill.id;
+      final sameName = message.content == skill.name;
+      if (sameId || sameName) return true;
+    }
+    return false;
   }
 
   /// 保存助手消息到数据库
@@ -576,7 +590,6 @@ class _ChatSheetState extends State<ChatSheet> {
       _running = true;
       _controller.clear();
       _showSlashCommandPanel = false;
-      _toolActivities.clear();
       _currentTurnToolCalls.clear();
       _thinkingText = _thinkingPlaceholder;
       _isThinking = true;
@@ -588,20 +601,20 @@ class _ChatSheetState extends State<ChatSheet> {
 
     final history = _messagesForNativeHistory();
 
-    if (_conversationId != null) {
-      unawaited(MemCoachNativeBridge.addChatMessage(
-        conversationId: _conversationId!,
-        role: 'user',
-        content: text,
-      ).catchError((Object error) {
-        debugPrint('保存用户消息失败：$error');
-        return <String, dynamic>{};
-      }));
-    }
-
     try {
+      final conversationId = _conversationId;
+      _nativePersistsCurrentTurn = conversationId != null;
+      if (conversationId != null) {
+        await MemCoachNativeBridge.addChatMessage(
+          conversationId: conversationId,
+          role: 'user',
+          content: text,
+        );
+      }
+
       await MemCoachNativeBridge.startAgentTurn(
         message: text,
+        conversationId: conversationId,
         history: history,
         context: widget.pageContext ?? {},
       );
@@ -748,11 +761,16 @@ class _ChatSheetState extends State<ChatSheet> {
 
   void _attachCurrentToolCallsToLastAssistantMessage() {
     if (_currentTurnToolCalls.isEmpty) return;
+    final currentIds = _currentTurnToolCalls.map((call) => call.id).toSet();
     for (var i = _messages.length - 1; i >= 0; i--) {
       final message = _messages[i];
       if (message.role == _ChatRole.assistant) {
         _messages[i] = message.copyWith(
             toolCalls: List<_ToolCallRecord>.from(_currentTurnToolCalls));
+        _messages.removeWhere((message) =>
+            message.role == _ChatRole.toolChip &&
+            message.toolCallId != null &&
+            currentIds.contains(message.toolCallId));
         return;
       }
     }
@@ -848,6 +866,14 @@ class _ChatSheetState extends State<ChatSheet> {
                                     if (message.role == _ChatRole.tool) {
                                       return const SizedBox.shrink();
                                     }
+                                    if (message.role == _ChatRole.skillChip) {
+                                      return ToolCallChip(
+                                        toolName: 'skill:${message.content}',
+                                        arguments:
+                                            _formatSkillArguments(message),
+                                        result: message.skillTriggerReason,
+                                      );
+                                    }
                                     if (message.role == _ChatRole.toolChip) {
                                       return ToolCallChip(
                                         toolName: message.content,
@@ -893,8 +919,8 @@ class _ChatSheetState extends State<ChatSheet> {
             icon: const Icon(Icons.history_rounded),
             style: IconButton.styleFrom(
               backgroundColor: isDark
-                  ? Colors.white.withOpacity(0.06)
-                  : Colors.grey.withOpacity(0.1),
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.grey.withValues(alpha: 0.1),
               foregroundColor: isDark ? Colors.white70 : Colors.black87,
             ),
           ),
@@ -905,8 +931,8 @@ class _ChatSheetState extends State<ChatSheet> {
                 height: 4,
                 decoration: BoxDecoration(
                   color: isDark
-                      ? Colors.white.withOpacity(0.2)
-                      : Colors.black.withOpacity(0.15),
+                      ? Colors.white.withValues(alpha: 0.2)
+                      : Colors.black.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -918,8 +944,8 @@ class _ChatSheetState extends State<ChatSheet> {
             icon: const Icon(Icons.close_rounded),
             style: IconButton.styleFrom(
               backgroundColor: isDark
-                  ? Colors.white.withOpacity(0.06)
-                  : Colors.grey.withOpacity(0.1),
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.grey.withValues(alpha: 0.1),
               foregroundColor: isDark ? Colors.white70 : Colors.black87,
             ),
           ),
@@ -975,13 +1001,34 @@ class _ChatSheetState extends State<ChatSheet> {
   }
 
   Widget _buildMessageItem(_ChatMessage message) {
-    final hasToolCalls =
-        message.role == _ChatRole.assistant && message.toolCalls.isNotEmpty;
-    final reasoningContent = _nullableMessageText(message.reasoningContent);
+    if (message.role == _ChatRole.assistant && message.toolCalls.isNotEmpty) {
+      final children = <Widget>[
+        for (final call in message.toolCalls)
+          ToolCallChip(
+            toolName: call.name,
+            arguments: call.arguments,
+            result: _toolResultForCall(call.id),
+          ),
+        if (message.content.trim().isNotEmpty) MarkdownBubble(message: message),
+      ];
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      );
+    }
 
-    // 只渲染消息本身，不显示工具调用和 reasoning
-    // 工具调用已通过 ToolActivityBar 统一展示，避免重复
     return MarkdownBubble(message: message);
+  }
+
+  String? _toolResultForCall(String toolCallId) {
+    if (toolCallId.trim().isEmpty) return null;
+    for (var i = _messages.length - 1; i >= 0; i--) {
+      final message = _messages[i];
+      if (message.role == _ChatRole.tool && message.toolCallId == toolCallId) {
+        return message.content;
+      }
+    }
+    return null;
   }
 
   bool _isTransientStatus() {
@@ -1038,24 +1085,14 @@ class _ChatSheetState extends State<ChatSheet> {
     );
   }
 
-  Widget _buildToolActivityBar() {
-    return ToolActivityBar(
-      toolActivities: _toolActivities,
-      expanded: _toolBarExpanded,
-      onExpandedChanged: (expanded) {
-        setState(() {
-          _toolBarExpanded = expanded;
-        });
-      },
-    );
-  }
-
-  Widget _buildPdfParseStatusCard() {
-    return const SizedBox.shrink();
-  }
-
-  String _pdfStatusLabel(String status) {
-    return status;
+  String _formatSkillArguments(_ChatMessage message) {
+    final lines = <String>[
+      if (message.skillId != null && message.skillId!.trim().isNotEmpty)
+        '策略 ID：${message.skillId}',
+      if (message.skillConfidence != null && message.skillConfidence! > 0)
+        '置信度：${(message.skillConfidence! * 100).round()}%',
+    ];
+    return lines.join('\n');
   }
 
   Widget _buildSlashCommandPanel() {
@@ -1208,34 +1245,58 @@ class _ChatSheetState extends State<ChatSheet> {
   }
 
   List<Map<String, dynamic>> _messagesForNativeHistory() {
-    return _messages.where((message) {
-      if (message.role == _ChatRole.system) return false;
-      // 核心修复：强制保留所有工具结果消息，即使内容为空
-      if (message.role == _ChatRole.tool) return true;
-      // 保留有内容的消息
-      if (message.content.trim().isNotEmpty) return true;
-      // 保留：带有工具调用的助手消息（即使内容为空，ReAct 协议也必须保留它）
-      if (message.role == _ChatRole.assistant && message.toolCalls.isNotEmpty)
-        return true;
-      return false;
-    }).map((message) {
-      final role = switch (message.role) {
-        _ChatRole.user => 'user',
-        _ChatRole.assistant => 'assistant',
-        _ChatRole.tool => 'tool',
-        _ChatRole.system => 'system',
-        _ChatRole.toolChip => 'system',
-      };
-      return <String, dynamic>{
-        'role': role,
-        'content': message.content,
-        if (message.reasoningContent != null)
-          'reasoning_content': message.reasoningContent,
-        if (message.toolCallId != null) 'tool_call_id': message.toolCallId,
-        if (message.toolCalls.isNotEmpty)
-          'tool_calls': message.toolCalls.map((call) => call.toJson()).toList(),
-      };
-    }).toList();
+    final toolMessagesById = <String, _ChatMessage>{};
+    for (final message in _messages) {
+      final id = message.toolCallId;
+      if (message.role == _ChatRole.tool && id != null && id.isNotEmpty) {
+        toolMessagesById[id] = message;
+      }
+    }
+
+    final history = <Map<String, dynamic>>[];
+    for (final message in _messages) {
+      if (message.role == _ChatRole.system ||
+          message.role == _ChatRole.tool ||
+          message.role == _ChatRole.toolChip ||
+          message.role == _ChatRole.skillChip) {
+        continue;
+      }
+      if (message.content.trim().isEmpty &&
+          !(message.role == _ChatRole.assistant &&
+              message.toolCalls.isNotEmpty)) {
+        continue;
+      }
+
+      history.add(_messageToNativeHistory(message));
+      if (message.role == _ChatRole.assistant && message.toolCalls.isNotEmpty) {
+        for (final call in message.toolCalls) {
+          final toolMessage = toolMessagesById[call.id];
+          if (toolMessage == null) continue;
+          history.add(_messageToNativeHistory(toolMessage));
+        }
+      }
+    }
+    return history;
+  }
+
+  Map<String, dynamic> _messageToNativeHistory(_ChatMessage message) {
+    final role = switch (message.role) {
+      _ChatRole.user => 'user',
+      _ChatRole.assistant => 'assistant',
+      _ChatRole.tool => 'tool',
+      _ChatRole.system => 'system',
+      _ChatRole.toolChip => 'system',
+      _ChatRole.skillChip => 'system',
+    };
+    return <String, dynamic>{
+      'role': role,
+      'content': message.content,
+      if (message.reasoningContent != null)
+        'reasoning_content': message.reasoningContent,
+      if (message.toolCallId != null) 'tool_call_id': message.toolCallId,
+      if (message.toolCalls.isNotEmpty)
+        'tool_calls': message.toolCalls.map((call) => call.toJson()).toList(),
+    };
   }
 
   String _effortLabel(String effort) {
@@ -1271,7 +1332,6 @@ class _ChatSheetState extends State<ChatSheet> {
           role: _ChatRole.system,
           content: '已清空当前屏幕上下文，数据库中的历史会话不会被删除。',
         ));
-      _toolActivities.clear();
       _thinkingText = '';
       _isThinking = false;
     });
@@ -1279,7 +1339,10 @@ class _ChatSheetState extends State<ChatSheet> {
 
   Future<void> _executeExportCommand() async {
     final buffer = StringBuffer();
-    for (final msg in _messages.where((msg) => msg.role != _ChatRole.tool)) {
+    for (final msg in _messages.where((msg) =>
+        msg.role != _ChatRole.tool &&
+        msg.role != _ChatRole.toolChip &&
+        msg.role != _ChatRole.skillChip)) {
       final role = msg.role == _ChatRole.user
           ? '用户'
           : msg.role == _ChatRole.assistant
@@ -1316,11 +1379,12 @@ class _ChatSheetState extends State<ChatSheet> {
         children: [
           AiSparkleLogo(
             size: 48,
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.35),
+            color:
+                Theme.of(context).colorScheme.primary.withValues(alpha: 0.35),
           ),
           const SizedBox(height: 16),
           Text(
-            'MEM Coach',
+            'MEM 搭子',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w800,
@@ -1332,7 +1396,10 @@ class _ChatSheetState extends State<ChatSheet> {
             '问我：今天该怎么学？',
             style: TextStyle(
               fontSize: 15,
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.6),
             ),
           ),
         ],
@@ -1351,7 +1418,10 @@ class _ChatSheetState extends State<ChatSheet> {
             '加载会话中...',
             style: TextStyle(
               fontSize: 15,
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.6),
             ),
           ),
         ],
@@ -1373,8 +1443,8 @@ class _ChatSheetState extends State<ChatSheet> {
         border: Border(
           top: BorderSide(
             color: isDark
-                ? Colors.white.withOpacity(0.06)
-                : Colors.black.withOpacity(0.06),
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.black.withValues(alpha: 0.06),
           ),
         ),
       ),
@@ -1392,8 +1462,20 @@ class _ChatSheetState extends State<ChatSheet> {
                   icon: const Icon(Icons.bolt_rounded),
                   style: IconButton.styleFrom(
                     backgroundColor: isDark
-                        ? Colors.white.withOpacity(0.06)
-                        : Colors.grey.withOpacity(0.1),
+                        ? Colors.white.withValues(alpha: 0.06)
+                        : Colors.grey.withValues(alpha: 0.1),
+                    foregroundColor: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: '引用 PDF',
+                  onPressed: _running ? null : _showPdfPicker,
+                  icon: const Icon(Icons.picture_as_pdf_rounded),
+                  style: IconButton.styleFrom(
+                    backgroundColor: isDark
+                        ? Colors.white.withValues(alpha: 0.06)
+                        : Colors.grey.withValues(alpha: 0.1),
                     foregroundColor: isDark ? Colors.white70 : Colors.black87,
                   ),
                 ),
@@ -1404,8 +1486,8 @@ class _ChatSheetState extends State<ChatSheet> {
                   icon: const Icon(Icons.mic_rounded),
                   style: IconButton.styleFrom(
                     backgroundColor: isDark
-                        ? Colors.white.withOpacity(0.06)
-                        : Colors.grey.withOpacity(0.1),
+                        ? Colors.white.withValues(alpha: 0.06)
+                        : Colors.grey.withValues(alpha: 0.1),
                     foregroundColor: isDark ? Colors.white70 : Colors.black87,
                   ),
                 ),
@@ -1440,7 +1522,7 @@ class _ChatSheetState extends State<ChatSheet> {
                         color: Theme.of(context)
                             .colorScheme
                             .onSurface
-                            .withOpacity(0.4),
+                            .withValues(alpha: 0.4),
                       ),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(
@@ -1524,7 +1606,7 @@ class _ConversationHistorySheet extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.history_toggle_off_rounded,
-                      size: 42, color: Colors.black.withOpacity(0.25)),
+                      size: 42, color: Colors.black.withValues(alpha: 0.25)),
                   const SizedBox(height: 12),
                   const Text('暂无历史会话',
                       style:
@@ -1598,7 +1680,35 @@ class _ConversationHistorySheet extends StatelessWidget {
 }
 
 /// 聊天消息角色
-enum _ChatRole { user, assistant, tool, system, toolChip }
+enum _ChatRole { user, assistant, tool, system, toolChip, skillChip }
+
+class _ActiveSkill {
+  const _ActiveSkill({
+    required this.id,
+    required this.name,
+    required this.confidence,
+    required this.triggerReason,
+  });
+
+  final String id;
+  final String name;
+  final double confidence;
+  final String triggerReason;
+
+  static _ActiveSkill? fromEvent(AgentNativeEvent event) {
+    final id = event.skillId?.trim();
+    final name = event.skillName?.trim();
+    if ((id == null || id.isEmpty) && (name == null || name.isEmpty)) {
+      return null;
+    }
+    return _ActiveSkill(
+      id: id == null || id.isEmpty ? name! : id,
+      name: name == null || name.isEmpty ? id! : name,
+      confidence: event.confidence ?? 0,
+      triggerReason: event.triggerReason?.trim() ?? '',
+    );
+  }
+}
 
 class _ToolCallRecord {
   const _ToolCallRecord({
@@ -1638,6 +1748,9 @@ class _ChatMessage {
     this.toolResult,
     this.toolError,
     this.toolDurationMs,
+    this.skillId,
+    this.skillConfidence,
+    this.skillTriggerReason,
     this.toolCalls = const [],
   });
 
@@ -1650,6 +1763,9 @@ class _ChatMessage {
   final String? toolResult;
   final String? toolError;
   final int? toolDurationMs;
+  final String? skillId;
+  final double? skillConfidence;
+  final String? skillTriggerReason;
   final List<_ToolCallRecord> toolCalls;
 
   _ChatMessage copyWith({
@@ -1661,6 +1777,9 @@ class _ChatMessage {
     String? toolResult,
     String? toolError,
     int? toolDurationMs,
+    String? skillId,
+    double? skillConfidence,
+    String? skillTriggerReason,
     List<_ToolCallRecord>? toolCalls,
   }) {
     return _ChatMessage(
@@ -1673,6 +1792,9 @@ class _ChatMessage {
       toolResult: toolResult ?? this.toolResult,
       toolError: toolError ?? this.toolError,
       toolDurationMs: toolDurationMs ?? this.toolDurationMs,
+      skillId: skillId ?? this.skillId,
+      skillConfidence: skillConfidence ?? this.skillConfidence,
+      skillTriggerReason: skillTriggerReason ?? this.skillTriggerReason,
       toolCalls: toolCalls ?? this.toolCalls,
     );
   }

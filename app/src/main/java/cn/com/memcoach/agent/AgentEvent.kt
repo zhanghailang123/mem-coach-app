@@ -39,6 +39,14 @@ sealed class AgentEvent {
     /** 学习状态变更 */
     data class StateChanged(val state: String, val stateName: String) : AgentEvent()
 
+    /** 学习策略激活 */
+    data class SkillActivated(
+        val skillId: String,
+        val skillName: String,
+        val confidence: Double,
+        val triggerReason: String
+    ) : AgentEvent()
+
     /** 上下文压缩完成 */
     data class ContextCompacted(val previousPromptTokens: Int) : AgentEvent()
 

@@ -1,6 +1,7 @@
 package cn.com.memcoach.channel
 
 import cn.com.memcoach.agent.AgentInput
+import cn.com.memcoach.agent.AgentEvent
 import cn.com.memcoach.agent.AgentOrchestrator
 import cn.com.memcoach.agent.AgentPromptContext
 import cn.com.memcoach.agent.AgentReasoningEffort
@@ -9,9 +10,13 @@ import cn.com.memcoach.agent.ConversationMessage
 
 import cn.com.memcoach.pdf.PdfDocumentRepository
 import cn.com.memcoach.pdf.toMap
+import cn.com.memcoach.study.AnswerSubmissionRecorder
+import cn.com.memcoach.data.entity.AgentEventEntity
+import cn.com.memcoach.data.entity.ChatMessageEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 /**
  * Flutter-Native 通信桥。
@@ -27,11 +32,13 @@ class MemCoachChannelBridge(
     private val eventSink: NativeEventSink,
     private val studyRecordDao: cn.com.memcoach.data.dao.StudyRecordDao,
     private val userMasteryDao: cn.com.memcoach.data.dao.UserMasteryDao,
+    private val answerSubmissionRecorder: AnswerSubmissionRecorder,
     private val pdfRepository: PdfDocumentRepository,
     private val examQuestionDao: cn.com.memcoach.data.dao.ExamQuestionDao,
     private val knowledgeNodeDao: cn.com.memcoach.data.dao.KnowledgeNodeDao,
     private val conversationDao: cn.com.memcoach.data.dao.ConversationDao,
     private val chatMessageDao: cn.com.memcoach.data.dao.ChatMessageDao,
+    private val agentEventDao: cn.com.memcoach.data.dao.AgentEventDao,
     private val pipelineService: cn.com.memcoach.pipeline.PdfPipelineService,
     private val dailyMemoryService: cn.com.memcoach.agent.memory.DailyMemoryService? = null,
     private val longTermMemoryService: cn.com.memcoach.agent.memory.LongTermMemoryService? = null
@@ -42,6 +49,7 @@ class MemCoachChannelBridge(
         return when (method) {
             "agent.startTurn" -> startAgentTurn(arguments)
             "agent.cancelTurn" -> cancelAgentTurn()
+            "agent.isRunning" -> isAgentRunning()
             "agent.compactContext" -> compactContext(arguments)
             "agent.setReasoningEffort" -> setReasoningEffort(arguments)
             "pdf.upload" -> uploadPdf(arguments)
@@ -145,14 +153,69 @@ class MemCoachChannelBridge(
         val accuracy = if (totalCount > 0) correctCount.toDouble() / totalCount else 0.0
         
         val dailyCounts = studyRecordDao.getDailyCountSince(startTime = oneWeekAgo)
+        val dailyAccuracyByDate = studyRecordDao.getDailyAccuracySince(startTime = oneWeekAgo).associateBy { it.date }
+        val modeCounts = studyRecordDao.getCountByMode(startTime = oneWeekAgo)
+        val subjectProgress = listOf(
+            "math" to "数学",
+            "logic" to "逻辑",
+            "writing" to "写作",
+            "english" to "英语"
+        ).map { (subject, label) ->
+            val tracked = userMasteryDao.getProgressBySubject(subject = subject)
+            val totalNodes = knowledgeNodeDao.countBySubject(subject)
+            val total = if (totalNodes > 0) totalNodes else tracked.total
+            mapOf(
+                "subject" to subject,
+                "label" to label,
+                "learned" to tracked.total,
+                "mastered" to tracked.mastered,
+                "total" to total,
+                "progress" to if (total > 0) tracked.mastered.toDouble() / total else 0.0
+            )
+        }.filter { (it["total"] as Int) > 0 || (it["learned"] as Int) > 0 }
         val weakPoints = userMasteryDao.getWeakest(limit = 3)
         
         return mapOf(
             "total_study_time_seconds" to totalTime,
             "total_questions" to totalCount,
             "overall_accuracy" to accuracy,
-            "daily_stats" to dailyCounts.map { it: cn.com.memcoach.data.dao.DailyStudyCount -> mapOf<String, Any>("date" to it.date, "count" to it.count) },
-            "weak_points" to weakPoints.map { it: cn.com.memcoach.data.entity.UserMastery -> mapOf<String, Any>("name" to it.knowledgeId, "mastery" to it.masteryLevel) }
+            "daily_stats" to dailyCounts.map { it: cn.com.memcoach.data.dao.DailyStudyCount ->
+                val dayAccuracy = dailyAccuracyByDate[it.date]
+                val dayTotal = dayAccuracy?.total ?: it.count
+                val dayCorrect = dayAccuracy?.correct ?: 0
+                mapOf(
+                    "date" to it.date,
+                    "count" to it.count,
+                    "total" to dayTotal,
+                    "correct" to dayCorrect,
+                    "accuracy" to if (dayTotal > 0) dayCorrect.toDouble() / dayTotal else 0.0
+                )
+            },
+            "mode_counts" to modeCounts.map {
+                mapOf(
+                    "mode" to it.studyMode,
+                    "label" to when (it.studyMode) {
+                        cn.com.memcoach.data.entity.StudyRecord.MODE_REVIEW -> "复习"
+                        cn.com.memcoach.data.entity.StudyRecord.MODE_MOCK -> "模考"
+                        cn.com.memcoach.data.entity.StudyRecord.MODE_MEMORIZE -> "背诵"
+                        else -> "练习"
+                    },
+                    "count" to it.count
+                )
+            },
+            "subject_progress" to subjectProgress,
+            "weak_points" to weakPoints.map { mastery: cn.com.memcoach.data.entity.UserMastery ->
+                val node = knowledgeNodeDao.getById(mastery.knowledgeId)
+                mapOf(
+                    "knowledge_id" to mastery.knowledgeId,
+                    "name" to (node?.name ?: mastery.knowledgeId),
+                    "subject" to (node?.subject ?: ""),
+                    "chapter" to (node?.chapter ?: ""),
+                    "mastery" to mastery.masteryLevel,
+                    "review_count" to mastery.reviewCount,
+                    "correct_count" to mastery.correctCount
+                )
+            }
         )
 
     }
@@ -164,9 +227,15 @@ class MemCoachChannelBridge(
         val history = parseHistory(arguments["history"])
         val pageContext = arguments["context"] as? Map<*, *>
         val context = buildAgentContext(pageContext)
+        val conversationId = (arguments["conversationId"] as? Number)?.toLong()
+        val runId = "run_${System.currentTimeMillis()}"
 
         currentAgentJob?.cancel()
         currentAgentJob = scope.launch {
+            val toolCalls = mutableListOf<ToolCallSnapshot>()
+            val toolResults = mutableListOf<ToolResultSnapshot>()
+            val reasoningBuffer = StringBuilder()
+            var assistantContent = ""
             orchestrator.run(
                 AgentInput(
                     userMessage = message,
@@ -174,11 +243,161 @@ class MemCoachChannelBridge(
                     context = context
                 )
             ).collect { event ->
-                eventSink.success(AgentEventMapper.toMap(event))
+                val eventMap = AgentEventMapper.toMap(event)
+                persistAgentEvent(conversationId, runId, eventMap)
+                when (event) {
+                    is AgentEvent.ThinkingUpdate -> reasoningBuffer.append(event.content)
+                    is AgentEvent.ToolCallStart -> {
+                        val toolCallId = event.toolCallId ?: "tool_${toolCalls.size}_${System.currentTimeMillis()}"
+                        toolCalls.add(
+                            ToolCallSnapshot(
+                                id = toolCallId,
+                                name = event.toolName,
+                                arguments = event.arguments
+                            )
+                        )
+                    }
+                    is AgentEvent.ToolCallComplete -> {
+                        toolResults.add(
+                            ToolResultSnapshot(
+                                id = event.toolCallId.orEmpty(),
+                                name = event.toolName,
+                                result = event.result
+                            )
+                        )
+                    }
+                    is AgentEvent.ChatMessage -> {
+                        assistantContent = event.content
+                        if (event.isFinal) {
+                            persistAgentTurnMessages(
+                                conversationId = conversationId,
+                                userMessage = message,
+                                assistantContent = assistantContent,
+                                reasoningContent = reasoningBuffer.toString().takeIf { it.isNotBlank() },
+                                toolCalls = toolCalls,
+                                toolResults = toolResults
+                            )
+                        }
+                    }
+                    is AgentEvent.Error -> {
+                        persistAgentTurnMessages(
+                            conversationId = conversationId,
+                            userMessage = message,
+                            assistantContent = event.message,
+                            reasoningContent = reasoningBuffer.toString().takeIf { it.isNotBlank() },
+                            toolCalls = toolCalls,
+                            toolResults = toolResults
+                        )
+                    }
+                    else -> Unit
+                }
+                eventSink.success(eventMap)
             }
         }
 
         return "started"
+    }
+
+    private suspend fun persistAgentEvent(
+        conversationId: Long?,
+        runId: String,
+        event: Map<String, Any?>
+    ) {
+        if (conversationId == null) return
+        val type = event["type"]?.toString() ?: return
+        try {
+            agentEventDao.insert(
+                AgentEventEntity(
+                    conversationId = conversationId,
+                    runId = runId,
+                    eventType = type,
+                    payloadJson = mapToJson(event).toString(),
+                    createdAt = System.currentTimeMillis()
+                )
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("MemCoachChannelBridge", "保存 Agent 事件失败", e)
+        }
+    }
+
+    private suspend fun persistAgentTurnMessages(
+        conversationId: Long?,
+        userMessage: String,
+        assistantContent: String,
+        reasoningContent: String?,
+        toolCalls: List<ToolCallSnapshot>,
+        toolResults: List<ToolResultSnapshot>
+    ) {
+        if (conversationId == null) return
+        if (assistantContent.isBlank() && toolCalls.isEmpty() && toolResults.isEmpty()) return
+
+        try {
+            val now = System.currentTimeMillis()
+            val toolCallsJson = buildToolCallsJson(toolCalls)
+            chatMessageDao.insert(
+                ChatMessageEntity(
+                    conversationId = conversationId,
+                    role = ChatMessageEntity.ROLE_ASSISTANT,
+                    content = assistantContent,
+                    thinkingContent = reasoningContent,
+                    toolCallsJson = toolCallsJson,
+                    createdAt = now
+                )
+            )
+            toolResults.forEachIndexed { index, result ->
+                chatMessageDao.insert(
+                    ChatMessageEntity(
+                        conversationId = conversationId,
+                        role = ChatMessageEntity.ROLE_TOOL,
+                        content = result.result,
+                        toolName = result.name,
+                        toolStatus = ChatMessageEntity.TOOL_STATUS_SUCCESS,
+                        toolResult = result.result,
+                        toolCallId = result.id.takeIf { it.isNotBlank() },
+                        createdAt = now + index + 1
+                    )
+                )
+            }
+
+            val count = chatMessageDao.getCountByConversationId(conversationId)
+            conversationDao.updateMessageCount(conversationId, count)
+            conversationDao.updateTimestamp(conversationId, System.currentTimeMillis())
+            updateDefaultConversationTitle(conversationId, userMessage)
+        } catch (e: Exception) {
+            android.util.Log.w("MemCoachChannelBridge", "保存 Agent 回复失败", e)
+        }
+    }
+
+    private suspend fun updateDefaultConversationTitle(conversationId: Long, userMessage: String) {
+        val conversation = conversationDao.getById(conversationId) ?: return
+        if (conversation.title != "新对话") return
+        val title = userMessage.trim().let { text ->
+            if (text.length > 20) "${text.take(20)}..." else text
+        }
+        if (title.isNotBlank()) {
+            conversationDao.updateTitle(conversationId, title)
+        }
+    }
+
+    private fun buildToolCallsJson(toolCalls: List<ToolCallSnapshot>): String? {
+        if (toolCalls.isEmpty()) return null
+        val array = org.json.JSONArray()
+        toolCalls.forEach { call ->
+            array.put(JSONObject().apply {
+                put("id", call.id)
+                put("name", call.name)
+                put("arguments", call.arguments)
+            })
+        }
+        return array.toString()
+    }
+
+    private fun mapToJson(map: Map<String, Any?>): JSONObject {
+        return JSONObject().apply {
+            map.forEach { (key, value) ->
+                put(key, value)
+            }
+        }
     }
 
     /**
@@ -258,7 +477,13 @@ class MemCoachChannelBridge(
                 用户正在查看真题：${context["question_id"]}
                 - 年份：${context["year"]}
                 - 科目：${context["subject"]}
+                - 题型/分区：${context["section"]}
+                - 考点：${context["topic"]}
+                - 难度：${context["difficulty"]}
                 - 题干：${context["stem"]}
+                - 选项：${context["options"]}
+                - 答案：${context["answer"]}
+                - 解析：${context["explanation"]}
 
                 用户问你关于这道题的问题时，无需让用户重复输入题目ID，直接基于此题回答。
             """.trimIndent()
@@ -307,6 +532,10 @@ class MemCoachChannelBridge(
         currentAgentJob?.cancel()
         currentAgentJob = null
         return "cancelled"
+    }
+
+    private fun isAgentRunning(): Map<String, Any?> {
+        return mapOf("running" to (currentAgentJob?.isActive == true))
     }
 
     private suspend fun compactContext(arguments: Map<String, Any?>): Map<String, Any?> {
@@ -467,79 +696,26 @@ class MemCoachChannelBridge(
     private suspend fun submitAnswer(arguments: Map<String, Any?>): Map<String, Any?> {
         val questionId = arguments["question_id"] as? String ?: return mapOf("error" to "question_id required")
         val userAnswer = arguments["user_answer"] as? String ?: return mapOf("error" to "user_answer required")
-        val timeSpentSec = (arguments["time_spent_seconds"] as? Int) ?: 0
-
-        val question = examQuestionDao.getById(questionId) ?: return mapOf("error" to "question not found: $questionId")
-        val correctAnswer = question.answer ?: ""
-        val isCorrect = userAnswer.trim().equals(correctAnswer.trim(), ignoreCase = true)
-
-        // 记录学习记录
-        val knowledgeId = question.topic ?: "unknown"
-        studyRecordDao.insert(
-            cn.com.memcoach.data.entity.StudyRecord(
+        val timeSpentSec = (arguments["time_spent_seconds"] as? Number)?.toInt() ?: 0
+        val result = try {
+            answerSubmissionRecorder.submit(
                 questionId = questionId,
                 userAnswer = userAnswer,
-                isCorrect = isCorrect,
-                timeSpentSeconds = timeSpentSec,
-                studyMode = cn.com.memcoach.data.entity.StudyRecord.MODE_PRACTICE,
-                knowledgeId = knowledgeId,
-                createdAt = System.currentTimeMillis()
+                timeSpentSeconds = timeSpentSec
             )
-        )
-
-        // 更新掌握度：只有题目 topic 能匹配到真实知识点时才写 user_mastery。
-        // PDF 解析出的 topic 可能只是标签文本，不一定等于 knowledge_nodes.id；直接写会触发外键错误，导致提交失败。
-        val now = System.currentTimeMillis()
-        val validKnowledgeId = question.topic
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?.takeIf { knowledgeNodeDao.getById(it) != null }
-        val masteryLevel = if (validKnowledgeId != null) {
-            val existing = userMasteryDao.getByUserAndKnowledge(userId = "default", knowledgeId = validKnowledgeId)
-            val updated = if (existing != null) {
-                val newLevel = if (isCorrect) {
-                    minOf(1f, existing.masteryLevel + 0.1f)
-                } else {
-                    maxOf(0f, existing.masteryLevel - 0.05f)
-                }
-                val nextReview = if (isCorrect) {
-                    now + (existing.reviewCount + 1) * 24 * 60 * 60 * 1000L
-                } else {
-                    now + 12 * 60 * 60 * 1000L
-                }
-                existing.copy(
-                    masteryLevel = newLevel,
-                    reviewCount = existing.reviewCount + 1,
-                    correctCount = if (isCorrect) existing.correctCount + 1 else existing.correctCount,
-                    lastReviewDate = now,
-                    nextReviewDate = nextReview,
-                    updatedAt = now
-                )
-            } else {
-                cn.com.memcoach.data.entity.UserMastery(
-                    userId = "default",
-                    knowledgeId = validKnowledgeId,
-                    masteryLevel = if (isCorrect) 0.5f else 0.2f,
-                    reviewCount = 1,
-                    correctCount = if (isCorrect) 1 else 0,
-                    lastReviewDate = now,
-                    nextReviewDate = if (isCorrect) now + 24 * 60 * 60 * 1000L else now + 12 * 60 * 60 * 1000L,
-                    updatedAt = now
-                )
-            }
-            userMasteryDao.upsert(updated)
-            "%.0f%%".format(updated.masteryLevel * 100)
-        } else {
-            null
+        } catch (e: IllegalArgumentException) {
+            return mapOf("error" to (e.message ?: "submit failed"))
         }
 
         return mapOf(
-            "correct" to isCorrect,
-            "user_answer" to userAnswer,
-            "correct_answer" to correctAnswer,
-            "explanation" to (question.explanation ?: ""),
-            "hint" to if (!isCorrect) "请仔细阅读解析，理解错误原因后再尝试变式练习" else "回答正确！继续保持",
-            "mastery_level" to masteryLevel
+            "success" to true,
+            "correct" to result.correct,
+            "user_answer" to result.userAnswer,
+            "correct_answer" to result.correctAnswer,
+            "explanation" to result.explanation,
+            "hint" to result.hint,
+            "mastery_level" to result.masteryLevel,
+            "knowledge_id" to result.knowledgeId
         )
 
     }
@@ -815,8 +991,7 @@ class MemCoachChannelBridge(
         val conversationId = (arguments["conversationId"] as? Number)?.toLong() 
             ?: return emptyList()
         
-        val messages = chatMessageDao.getByConversationId(conversationId)
-        return messages.map { msg ->
+        val messages = chatMessageDao.getByConversationId(conversationId).map { msg ->
             mapOf(
                 "id" to msg.id,
                 "role" to msg.role,
@@ -831,6 +1006,32 @@ class MemCoachChannelBridge(
                 "thinking_stage" to msg.thinkingStage,
                 "created_at" to msg.createdAt
             )
+        }
+        val skillEvents = agentEventDao
+            .getByConversationIdAndType(conversationId, "skill_activated")
+            .mapNotNull { event -> event.toSkillChipMap() }
+
+        return (messages + skillEvents).sortedBy { row ->
+            (row["created_at"] as? Number)?.toLong() ?: 0L
+        }
+    }
+
+    private fun AgentEventEntity.toSkillChipMap(): Map<String, Any?>? {
+        return try {
+            val payload = JSONObject(payloadJson)
+            val skillName = payload.optString("skillName").takeIf { it.isNotBlank() }
+                ?: return null
+            mapOf(
+                "id" to id,
+                "role" to "skill_chip",
+                "content" to skillName,
+                "skill_id" to payload.optString("skillId"),
+                "skill_confidence" to payload.optDouble("confidence", 0.0),
+                "skill_trigger_reason" to payload.optString("triggerReason"),
+                "created_at" to createdAt
+            )
+        } catch (e: Exception) {
+            null
         }
     }
     
@@ -877,6 +1078,18 @@ class MemCoachChannelBridge(
             else -> raw.trim()
         }
     }
+
+    private data class ToolCallSnapshot(
+        val id: String,
+        val name: String,
+        val arguments: String
+    )
+
+    private data class ToolResultSnapshot(
+        val id: String,
+        val name: String,
+        val result: String
+    )
 
     private data class ExamScope(
         val subject: String?,

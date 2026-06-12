@@ -3,10 +3,7 @@ package cn.com.memcoach.agent.tool.handlers
 import cn.com.memcoach.agent.tool.ToolDefinition
 import cn.com.memcoach.agent.tool.ToolHandler
 import cn.com.memcoach.data.dao.ExamQuestionDao
-import cn.com.memcoach.data.dao.StudyRecordDao
-import cn.com.memcoach.data.dao.UserMasteryDao
-import cn.com.memcoach.data.entity.StudyRecord
-import cn.com.memcoach.data.entity.UserMastery
+import cn.com.memcoach.study.AnswerSubmissionRecorder
 import kotlinx.serialization.json.*
 import java.io.File
 import cn.com.memcoach.MemCoachApplication
@@ -30,8 +27,7 @@ import kotlinx.coroutines.withContext
  */
 class ExamToolHandler(
     private val questionDao: ExamQuestionDao,
-    private val studyRecordDao: StudyRecordDao,
-    private val masteryDao: UserMasteryDao
+    private val answerSubmissionRecorder: AnswerSubmissionRecorder
 ) : ToolHandler {
 
     override val toolNames = setOf(
@@ -177,6 +173,10 @@ class ExamToolHandler(
     "correct": {
       "type": "boolean",
       "description": "是否正确"
+    },
+    "user_answer": {
+      "type": "string",
+      "description": "用户答案，可选；用于同步写入错题本"
     },
     "time_spent_sec": {
       "type": "integer",
@@ -380,65 +380,26 @@ class ExamToolHandler(
     private suspend fun updateMastery(args: JsonObject): String {
         val questionId = args["question_id"]?.jsonPrimitive?.content ?: return errorJson("question_id 必填")
         val correct = args["correct"]?.jsonPrimitive?.booleanOrNull ?: return errorJson("correct 必填")
+        val userAnswer = args["user_answer"]?.jsonPrimitive?.contentOrNull
         val timeSpentSec = args["time_spent_sec"]?.jsonPrimitive?.intOrNull ?: 0
 
         val question = questionDao.getById(questionId) ?: return errorJson("题目不存在: $questionId")
-        val knowledgeId = question.topic ?: return errorJson("题目未关联知识点，无法更新掌握度: $questionId")
-        val now = System.currentTimeMillis()
-
-        // 1. 记录学习记录
-        studyRecordDao.insert(
-            StudyRecord(
+        val result = try {
+            answerSubmissionRecorder.submit(
                 questionId = questionId,
-                userAnswer = if (correct) question.answer else "",
-                isCorrect = correct,
-                timeSpentSeconds = timeSpentSec,
-                studyMode = StudyRecord.MODE_PRACTICE,
-                knowledgeId = knowledgeId,
-                createdAt = now
+                userAnswer = userAnswer ?: if (correct) question.answer.orEmpty() else "",
+                correctAnswerOverride = question.answer,
+                isCorrectOverride = correct,
+                timeSpentSeconds = timeSpentSec
             )
-        )
-
-        // 2. 更新掌握度
-        val existing = masteryDao.getByUserAndKnowledge(userId = "default", knowledgeId = knowledgeId)
-        val updated = if (existing != null) {
-            val newLevel = if (correct) {
-                minOf(1f, existing.masteryLevel + 0.1f)
-            } else {
-                maxOf(0f, existing.masteryLevel - 0.05f)
-            }
-            // 使用简化的间隔重复：正确则下次复习延后，错误则提前
-            val nextReview = if (correct) {
-                now + (existing.reviewCount + 1) * 24 * 60 * 60 * 1000L
-            } else {
-                now + 12 * 60 * 60 * 1000L // 12小时后复习
-            }
-            existing.copy(
-                masteryLevel = newLevel,
-                reviewCount = existing.reviewCount + 1,
-                correctCount = if (correct) existing.correctCount + 1 else existing.correctCount,
-                lastReviewDate = now,
-                nextReviewDate = nextReview,
-                updatedAt = now
-            )
-        } else {
-            UserMastery(
-                userId = "default",
-                knowledgeId = knowledgeId,
-                masteryLevel = if (correct) 0.5f else 0.2f,
-                reviewCount = 1,
-                correctCount = if (correct) 1 else 0,
-                lastReviewDate = now,
-                nextReviewDate = if (correct) now + 24 * 60 * 60 * 1000L else now + 12 * 60 * 60 * 1000L,
-                updatedAt = now
-            )
+        } catch (e: IllegalArgumentException) {
+            return errorJson(e.message ?: "更新掌握度失败")
         }
-        masteryDao.upsert(updated)
 
         return buildJsonObject {
             put("updated", true)
-            put("knowledge_id", knowledgeId)
-            put("mastery_level", "${"%.0f".format(updated.masteryLevel * 100)}%")
+            putNullable("knowledge_id", result.knowledgeId)
+            putNullable("mastery_level", result.masteryLevel)
             put("correct", correct)
         }.toString()
     }

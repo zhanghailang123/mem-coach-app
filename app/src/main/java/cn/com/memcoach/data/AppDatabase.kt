@@ -39,9 +39,10 @@ import cn.com.memcoach.data.entity.*
         VocabularyReview::class,
         ContentPatch::class,
         LearningInsight::class,
-        UserMemo::class
+        UserMemo::class,
+        AgentEventEntity::class
     ],
-    version = 11,
+    version = 13,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -72,6 +73,9 @@ abstract class AppDatabase : RoomDatabase() {
 
     /** 聊天消息 DAO */
     abstract fun chatMessageDao(): ChatMessageDao
+
+    /** Agent 事件 DAO */
+    abstract fun agentEventDao(): AgentEventDao
 
     companion object {
         private const val DATABASE_NAME = "mem_coach.db"
@@ -313,15 +317,54 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE INDEX IF NOT EXISTS `idx_vocab_review_vocab_id` ON `vocabulary_reviews` (`vocab_id`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `idx_vocab_review_created_at` ON `vocabulary_reviews` (`created_at`)")
+            }
+        }
+
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `agent_events` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `conversation_id` INTEGER NOT NULL,
+                        `run_id` TEXT NOT NULL,
+                        `event_type` TEXT NOT NULL,
+                        `payload_json` TEXT NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`conversation_id`) REFERENCES `conversations`(`id`) ON DELETE CASCADE
+                    )
+                """)
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_agent_events_conversation_id` ON `agent_events` (`conversation_id`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_agent_events_run_id` ON `agent_events` (`run_id`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_agent_events_event_type` ON `agent_events` (`event_type`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_agent_events_created_at` ON `agent_events` (`created_at`)")
+            }
+        }
+
         private fun buildDatabase(context: Context): AppDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 DATABASE_NAME
             )
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                .addMigrations(
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                    MIGRATION_6_7,
+                    MIGRATION_7_8,
+                    MIGRATION_8_9,
+                    MIGRATION_9_10,
+                    MIGRATION_10_11,
+                    MIGRATION_11_12,
+                    MIGRATION_12_13
+                )
                 .addCallback(DatabasePreloader(context))
-                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigrationFrom(1)
                 .build()
         }
     }

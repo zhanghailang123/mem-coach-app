@@ -49,7 +49,7 @@ class KnowledgeToolHandler(
     override fun getDefinitions(): List<ToolDefinition> = listOf(
         ToolDefinition(
             name = "knowledge_search",
-            description = "搜索知识点库，支持按科目、关键词查找。返回匹配的知识点列表（含ID、名称、描述、考频）。",
+            description = "搜索知识点库，支持按科目、关键词查找。返回匹配的知识点列表（含ID、名称、描述、考频）。关键词会匹配名称、描述和正文内容。",
             parameters = """
 {
   "type": "object",
@@ -124,7 +124,8 @@ class KnowledgeToolHandler(
         val filtered = if (keyword.isNotBlank()) {
             allNodes.filter {
                 it.name.contains(keyword, ignoreCase = true) ||
-                (it.description?.contains(keyword, ignoreCase = true) == true)
+                (it.description?.contains(keyword, ignoreCase = true) == true) ||
+                (it.content?.contains(keyword, ignoreCase = true) == true)
             }
         } else {
             allNodes

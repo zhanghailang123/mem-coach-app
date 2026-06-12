@@ -7,12 +7,14 @@ class MemCoachNativeBridge {
   MemCoachNativeBridge._();
 
   static const MethodChannel _methodChannel = MethodChannel('mem_coach/native');
-  static const EventChannel _agentEventChannel = EventChannel('mem_coach/agent_events');
+  static const EventChannel _agentEventChannel =
+      EventChannel('mem_coach/agent_events');
 
   static Stream<AgentNativeEvent>? _agentEvents;
 
   static Stream<AgentNativeEvent> get agentEvents {
-    return _agentEvents ??= _agentEventChannel.receiveBroadcastStream().map(_parseAgentEvent);
+    return _agentEvents ??=
+        _agentEventChannel.receiveBroadcastStream().map(_parseAgentEvent);
   }
 
   static AgentNativeEvent _parseAgentEvent(Object? event) {
@@ -35,11 +37,14 @@ class MemCoachNativeBridge {
 
   static Future<String> startAgentTurn({
     required String message,
+    int? conversationId,
     List<Map<String, dynamic>> history = const [],
     Map<String, dynamic> context = const {},
   }) async {
-    final result = await _methodChannel.invokeMethod<String>('agent.startTurn', {
+    final result =
+        await _methodChannel.invokeMethod<String>('agent.startTurn', {
       'message': message,
+      if (conversationId != null) 'conversationId': conversationId,
       'history': history,
       'context': context,
     });
@@ -50,25 +55,35 @@ class MemCoachNativeBridge {
     return _methodChannel.invokeMethod<void>('agent.cancelTurn');
   }
 
+  static Future<bool> isAgentRunning() async {
+    final result = await _methodChannel
+        .invokeMapMethod<String, dynamic>('agent.isRunning');
+    final running = result?['running'];
+    return running == true || running?.toString() == 'true';
+  }
+
   static Future<Map<String, dynamic>> compactContext({
     List<Map<String, dynamic>> history = const [],
   }) async {
-    final result = await _methodChannel.invokeMapMethod<String, dynamic>('agent.compactContext', {
+    final result = await _methodChannel
+        .invokeMapMethod<String, dynamic>('agent.compactContext', {
       'history': history,
     });
     return result ?? {};
   }
 
   static Future<Map<String, dynamic>> setReasoningEffort(String level) async {
-    final result = await _methodChannel.invokeMapMethod<String, dynamic>('agent.setReasoningEffort', {
+    final result = await _methodChannel
+        .invokeMapMethod<String, dynamic>('agent.setReasoningEffort', {
       'level': level,
     });
     return result ?? {};
   }
 
-  static Future<Map<String, dynamic>> uploadPdf(String path, {String? subject, int? year}) async {
-
-    final result = await _methodChannel.invokeMapMethod<String, dynamic>('pdf.upload', {
+  static Future<Map<String, dynamic>> uploadPdf(String path,
+      {String? subject, int? year}) async {
+    final result =
+        await _methodChannel.invokeMapMethod<String, dynamic>('pdf.upload', {
       'file_path': path,
       if (subject != null) 'subject': subject,
       if (year != null) 'year': year,
@@ -85,19 +100,23 @@ class MemCoachNativeBridge {
   }
 
   static Future<Map<String, dynamic>> getPdfParseStatus(String jobId) async {
-    final result = await _methodChannel.invokeMapMethod<String, dynamic>('pdf.parseStatus', {
+    final result = await _methodChannel
+        .invokeMapMethod<String, dynamic>('pdf.parseStatus', {
       'job_id': jobId,
     });
     return result ?? {};
   }
 
   static Future<List<String>> getActivePdfJobs() async {
-    final result = await _methodChannel.invokeListMethod<String>('pdf.getActiveJobs');
+    final result =
+        await _methodChannel.invokeListMethod<String>('pdf.getActiveJobs');
     return result ?? const [];
   }
 
-  static Future<Map<String, dynamic>> deletePdf(String id, {bool deleteQuestions = true}) async {
-    final result = await _methodChannel.invokeMapMethod<String, dynamic>('pdf.delete', {
+  static Future<Map<String, dynamic>> deletePdf(String id,
+      {bool deleteQuestions = true}) async {
+    final result =
+        await _methodChannel.invokeMapMethod<String, dynamic>('pdf.delete', {
       'id': id,
       'delete_questions': deleteQuestions,
     });
@@ -105,7 +124,8 @@ class MemCoachNativeBridge {
   }
 
   static Future<List<Map<String, dynamic>>> listPdfQuestions(String id) async {
-    final result = await _methodChannel.invokeListMethod<dynamic>('pdf.questions', {
+    final result =
+        await _methodChannel.invokeListMethod<dynamic>('pdf.questions', {
       'id': id,
     });
     return (result ?? const [])
@@ -115,16 +135,16 @@ class MemCoachNativeBridge {
   }
 
   static Future<Map<String, dynamic>> deletePdfQuestions(String id) async {
-    final result = await _methodChannel.invokeMapMethod<String, dynamic>('pdf.deleteQuestions', {
+    final result = await _methodChannel
+        .invokeMapMethod<String, dynamic>('pdf.deleteQuestions', {
       'id': id,
     });
     return result ?? {};
   }
 
   static Future<Map<String, dynamic>> getInsightSummary() async {
-
-
-    final result = await _methodChannel.invokeMapMethod<String, dynamic>('insight.getSummary');
+    final result = await _methodChannel
+        .invokeMapMethod<String, dynamic>('insight.getSummary');
     return result ?? {};
   }
 
@@ -133,7 +153,8 @@ class MemCoachNativeBridge {
     int count = 5,
     String? topic,
   }) async {
-    final result = await _methodChannel.invokeListMethod<dynamic>('exam.getRandomQuestions', {
+    final result = await _methodChannel
+        .invokeListMethod<dynamic>('exam.getRandomQuestions', {
       'subject': subject,
       'count': count,
       if (topic != null) 'topic': topic,
@@ -149,7 +170,8 @@ class MemCoachNativeBridge {
     required String userAnswer,
     int timeSpentSeconds = 0,
   }) async {
-    final result = await _methodChannel.invokeMapMethod<String, dynamic>('exam.submitAnswer', {
+    final result = await _methodChannel
+        .invokeMapMethod<String, dynamic>('exam.submitAnswer', {
       'question_id': questionId,
       'user_answer': userAnswer,
       'time_spent_seconds': timeSpentSeconds,
@@ -160,7 +182,8 @@ class MemCoachNativeBridge {
   static Future<List<Map<String, dynamic>>> getKnowledgeTree({
     String subject = 'logic',
   }) async {
-    final result = await _methodChannel.invokeListMethod<dynamic>('knowledge.getTree', {
+    final result =
+        await _methodChannel.invokeListMethod<dynamic>('knowledge.getTree', {
       'subject': subject,
     });
     return (result ?? const [])
@@ -170,12 +193,15 @@ class MemCoachNativeBridge {
   }
 
   static Future<Map<String, dynamic>> getHomeData() async {
-    final result = await _methodChannel.invokeMapMethod<String, dynamic>('home.getData');
+    final result =
+        await _methodChannel.invokeMapMethod<String, dynamic>('home.getData');
     return result ?? {};
   }
 
-  static Future<Map<String, dynamic>> callAgentTool(String toolName, Map<String, dynamic> arguments) async {
-    final result = await _methodChannel.invokeMapMethod<String, dynamic>('tool.call', {
+  static Future<Map<String, dynamic>> callAgentTool(
+      String toolName, Map<String, dynamic> arguments) async {
+    final result =
+        await _methodChannel.invokeMapMethod<String, dynamic>('tool.call', {
       'tool_name': toolName,
       'arguments': arguments,
     });
@@ -193,31 +219,34 @@ class MemCoachNativeBridge {
   }
 
   // 会话管理方法
-  
+
   /// 创建新会话
   static Future<Map<String, dynamic>> createConversation({
     String title = '新对话',
   }) async {
-    final result = await _methodChannel.invokeMapMethod<String, dynamic>('conversation.create', {
+    final result = await _methodChannel
+        .invokeMapMethod<String, dynamic>('conversation.create', {
       'title': title,
     });
     return result ?? {};
   }
-  
+
   /// 获取用户的所有会话
   static Future<List<Map<String, dynamic>>> getConversations() async {
-    final result = await _methodChannel.invokeListMethod<dynamic>('conversation.list');
+    final result =
+        await _methodChannel.invokeListMethod<dynamic>('conversation.list');
     return (result ?? const [])
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
   }
-  
+
   /// 获取会话的所有消息
   static Future<List<Map<String, dynamic>>> getConversationMessages({
     required int conversationId,
   }) async {
-    final result = await _methodChannel.invokeListMethod<dynamic>('conversation.getMessages', {
+    final result = await _methodChannel
+        .invokeListMethod<dynamic>('conversation.getMessages', {
       'conversationId': conversationId,
     });
     return (result ?? const [])
@@ -225,7 +254,7 @@ class MemCoachNativeBridge {
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
   }
-  
+
   /// 添加聊天消息
   static Future<Map<String, dynamic>> addChatMessage({
     required int conversationId,
@@ -238,8 +267,8 @@ class MemCoachNativeBridge {
     String? toolCallId,
     List<Map<String, dynamic>> toolCalls = const [],
   }) async {
-
-    final result = await _methodChannel.invokeMapMethod<String, dynamic>('conversation.addMessage', {
+    final result = await _methodChannel
+        .invokeMapMethod<String, dynamic>('conversation.addMessage', {
       'conversationId': conversationId,
       'role': role,
       'content': content,
@@ -253,7 +282,7 @@ class MemCoachNativeBridge {
 
     return result ?? {};
   }
-  
+
   /// 更新会话消息数量
   static Future<void> updateConversationMessageCount({
     required int conversationId,
@@ -284,7 +313,6 @@ class MemCoachNativeBridge {
   }
 }
 
-
 class AgentNativeEvent {
   const AgentNativeEvent({
     required this.type,
@@ -296,9 +324,12 @@ class AgentNativeEvent {
     this.error,
     this.toolCallId,
     this.isFinal = false,
-
     this.state,
     this.stateName,
+    this.skillId,
+    this.skillName,
+    this.confidence,
+    this.triggerReason,
     this.raw = const {},
   });
 
@@ -314,22 +345,33 @@ class AgentNativeEvent {
 
   final String? state;
   final String? stateName;
+  final String? skillId;
+  final String? skillName;
+  final double? confidence;
+  final String? triggerReason;
   final Map<String, dynamic> raw;
 
   factory AgentNativeEvent.fromJson(Map<String, dynamic> json) {
     return AgentNativeEvent(
       type: json['type'] as String? ?? 'unknown',
       content: json['content']?.toString(),
-      round: json['round'] is int ? json['round'] as int : int.tryParse(json['round']?.toString() ?? ''),
+      round: json['round'] is int
+          ? json['round'] as int
+          : int.tryParse(json['round']?.toString() ?? ''),
       toolName: json['toolName']?.toString(),
       arguments: json['arguments']?.toString(),
       result: json['result']?.toString(),
       error: json['error']?.toString(),
       toolCallId: json['toolCallId']?.toString(),
       isFinal: json['isFinal'] == true || json['isFinal']?.toString() == 'true',
-
       state: json['state']?.toString(),
       stateName: json['stateName']?.toString(),
+      skillId: json['skillId']?.toString(),
+      skillName: json['skillName']?.toString(),
+      confidence: json['confidence'] is num
+          ? (json['confidence'] as num).toDouble()
+          : double.tryParse(json['confidence']?.toString() ?? ''),
+      triggerReason: json['triggerReason']?.toString(),
       raw: json,
     );
   }

@@ -147,7 +147,7 @@ class AgentOrchestrator(
             )
             
             // 匹配最合适的 Skill
-            val matchedSkills = skillMatcher.match(scene, input.context)
+            val matchedSkills = skillMatcher.match(scene, input.context, input.userMessage)
             AgentTraceLogger.event(
                 "skill_matched",
                 mapOf(
@@ -180,6 +180,16 @@ class AgentOrchestrator(
             
             // 发送场景识别事件（用于 UI 展示）
             send(AgentEvent.StateChanged(scene.name, sceneRecognizer.getSceneDisplayName(scene)))
+            matchedSkills.forEach { result ->
+                send(
+                    AgentEvent.SkillActivated(
+                        skillId = result.skill.id,
+                        skillName = result.skill.name,
+                        confidence = result.confidence,
+                        triggerReason = result.triggerReason
+                    )
+                )
+            }
             
             instructions
         } else {

@@ -60,6 +60,14 @@ object AgentEventMapper {
             "stateName" to event.stateName
         )
 
+        is AgentEvent.SkillActivated -> mapOf(
+            "type" to "skill_activated",
+            "skillId" to event.skillId,
+            "skillName" to event.skillName,
+            "confidence" to event.confidence,
+            "triggerReason" to event.triggerReason
+        )
+
         is AgentEvent.ContextCompacted -> mapOf(
             "type" to "context_compacted",
             "previousPromptTokens" to event.previousPromptTokens

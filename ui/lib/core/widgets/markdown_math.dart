@@ -18,6 +18,29 @@ final _cjkTextRe = RegExp(r'[\u3400-\u9FFF]');
 final _htmlTagRe = RegExp(r'<[^>]+>');
 final _lineBreakHtmlRe = RegExp(r'<br\s*/?>', caseSensitive: false);
 final _imgHtmlRe = RegExp(r'<img\b[^>]*>', caseSensitive: false);
+final _softWrapProtectedMarkdownSegmentRe = RegExp(
+  r'(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|<math-(?:inline|block)>[^<]+</math-(?:inline|block)>|!?\[[^\]\n]*\]\([^)]+\)|<[^>\n]+>)',
+);
+final _longUnbrokenAsciiRunRe =
+    RegExp(r'[A-Za-z0-9][A-Za-z0-9._:/?&=%+#,\-]{27,}');
+final _bareLatexEnvironmentRe = RegExp(
+  r'(^|\n)([ \t]*)(\\begin\{([A-Za-z*]+)\}[\s\S]*?\\end\{[A-Za-z*]+\})([ \t]*)(?=\n|$)',
+);
+const _blockMathEnvironmentNames = {
+  'aligned',
+  'align',
+  'align*',
+  'gathered',
+  'gather',
+  'gather*',
+  'cases',
+  'matrix',
+  'pmatrix',
+  'bmatrix',
+  'vmatrix',
+  'array',
+  'split',
+};
 
 /// Markdown + LaTeX renderer shared by exam pages and chat bubbles.
 class MarkdownMathView extends StatelessWidget {
@@ -45,14 +68,18 @@ class MarkdownMathView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final effectiveTextColor = textColor ?? (isDark ? const Color(0xFFE5E5E7) : Colors.black87);
+    final effectiveTextColor =
+        textColor ?? (isDark ? const Color(0xFFE5E5E7) : Colors.black87);
     final effectiveMathColor =
         mathColor ?? Theme.of(context).colorScheme.primary;
     final effectiveStyleSheet = styleSheet ??
-        examMarkdownStyleSheet(context, baseFontSize: baseFontSize, textColor: effectiveTextColor);
+        examMarkdownStyleSheet(context,
+            baseFontSize: baseFontSize, textColor: effectiveTextColor);
+
+    final preparedData = _softWrapMarkdownText(prepareMarkdownMath(data));
 
     return MarkdownBody(
-      data: prepareMarkdownMath(data),
+      data: preparedData,
       selectable: selectable,
       extensionSet: md.ExtensionSet.gitHubFlavored,
       inlineSyntaxes: [
@@ -72,9 +99,9 @@ class MarkdownMathView extends StatelessWidget {
           fallbackColor: effectiveTextColor,
           baseFontSize: baseFontSize,
           backgroundColor:
-              blockMathBackground ?? effectiveMathColor.withOpacity(0.06),
-          borderColor:
-              blockMathBorderColor ?? effectiveMathColor.withOpacity(0.14),
+              blockMathBackground ?? effectiveMathColor.withValues(alpha: 0.06),
+          borderColor: blockMathBorderColor ??
+              effectiveMathColor.withValues(alpha: 0.14),
         ),
       },
       styleSheet: effectiveStyleSheet,
@@ -128,9 +155,12 @@ MarkdownStyleSheet examMarkdownStyleSheet(
 }) {
   final colorScheme = Theme.of(context).colorScheme;
   final isDark = Theme.of(context).brightness == Brightness.dark;
-  final foreground = textColor ?? (isDark ? const Color(0xFFE5E5E7) : Colors.black87);
+  final foreground =
+      textColor ?? (isDark ? const Color(0xFFE5E5E7) : Colors.black87);
   final muted = isDark ? const Color(0xFF98989D) : Colors.black54;
-  final borderColor = isDark ? Colors.white.withOpacity(0.12) : Colors.black.withOpacity(0.08);
+  final borderColor = isDark
+      ? Colors.white.withValues(alpha: 0.12)
+      : Colors.black.withValues(alpha: 0.08);
 
   return MarkdownStyleSheet(
     p: TextStyle(
@@ -172,7 +202,7 @@ MarkdownStyleSheet examMarkdownStyleSheet(
       color: colorScheme.primary,
       fontSize: baseFontSize - 1,
       fontFamily: 'monospace',
-      backgroundColor: colorScheme.primary.withOpacity(0.07),
+      backgroundColor: colorScheme.primary.withValues(alpha: 0.07),
     ),
     codeblockDecoration: BoxDecoration(
       color: const Color(0xFF1F2430),
@@ -186,10 +216,10 @@ MarkdownStyleSheet examMarkdownStyleSheet(
       fontStyle: FontStyle.italic,
     ),
     blockquoteDecoration: BoxDecoration(
-      color: colorScheme.primary.withOpacity(0.05),
+      color: colorScheme.primary.withValues(alpha: 0.05),
       border: Border(
         left: BorderSide(
-          color: colorScheme.primary.withOpacity(0.35),
+          color: colorScheme.primary.withValues(alpha: 0.35),
           width: 4,
         ),
       ),
@@ -198,7 +228,7 @@ MarkdownStyleSheet examMarkdownStyleSheet(
     a: TextStyle(
       color: colorScheme.primary,
       decoration: TextDecoration.underline,
-      decorationColor: colorScheme.primary.withOpacity(0.45),
+      decorationColor: colorScheme.primary.withValues(alpha: 0.45),
     ),
     horizontalRuleDecoration: BoxDecoration(
       border: Border(
@@ -332,13 +362,46 @@ String prepareMarkdownMath(String input) {
   return buffer.toString();
 }
 
+String _softWrapMarkdownText(String text) {
+  final buffer = StringBuffer();
+  var cursor = 0;
+
+  for (final match in _softWrapProtectedMarkdownSegmentRe.allMatches(text)) {
+    buffer
+        .write(_softWrapPlainMarkdownText(text.substring(cursor, match.start)));
+    buffer.write(match.group(0));
+    cursor = match.end;
+  }
+
+  buffer.write(_softWrapPlainMarkdownText(text.substring(cursor)));
+  return buffer.toString();
+}
+
+String _softWrapPlainMarkdownText(String text) {
+  return text.replaceAllMapped(_longUnbrokenAsciiRunRe, (match) {
+    final value = match.group(0) ?? '';
+    if (value.isEmpty) return value;
+
+    final buffer = StringBuffer();
+    for (var i = 0; i < value.length; i++) {
+      buffer.write(value[i]);
+      final shouldBreak = (i + 1) % 16 == 0 && i != value.length - 1;
+      if (shouldBreak) buffer.write('\u200B');
+    }
+    return buffer.toString();
+  });
+}
+
 String normalizeMarkdownMath(String input) {
   var normalized = input
+      .replaceAll('\r\n', '\n')
+      .replaceAll('\r', '\n')
       .replaceAll(r'\r\n', '\n')
       .replaceAll(r'\n', '\n')
-      .replaceAll(r'\r', '\r');
+      .replaceAll(r'\r', '\n');
 
   normalized = _normalizeEmbeddedHtml(normalized);
+  normalized = _normalizeDoubleEscapedMathDelimiters(normalized);
   normalized = normalized.replaceAllMapped(
     _doubleEscapedLatexCommandRe,
     (match) => '\\${match.group(1)}',
@@ -352,7 +415,20 @@ String normalizeMarkdownMath(String input) {
     (match) => '\$\$${match.group(1) ?? ''}\$\$',
   );
   normalized = _normalizeMathCodeSpans(normalized);
+  normalized = _normalizeBareMathEnvironments(normalized);
   normalized = _normalizeBareMathLines(normalized);
+  return normalized;
+}
+
+String _normalizeDoubleEscapedMathDelimiters(String text) {
+  var normalized = text.replaceAllMapped(
+    RegExp(r'\\\\\(([\s\S]*?)\\\\\)'),
+    (match) => '\$${match.group(1) ?? ''}\$',
+  );
+  normalized = normalized.replaceAllMapped(
+    RegExp(r'\\\\\[([\s\S]*?)\\\\\]'),
+    (match) => '\$\$${match.group(1) ?? ''}\$\$',
+  );
   return normalized;
 }
 
@@ -403,6 +479,21 @@ bool _isLikelyMathCodeSpan(String value) {
 
 String _normalizeBareMathLines(String text) {
   return text.split('\n').map(_normalizeBareMathLine).join('\n');
+}
+
+String _normalizeBareMathEnvironments(String text) {
+  return text.replaceAllMapped(_bareLatexEnvironmentRe, (match) {
+    final original = match.group(0) ?? '';
+    final environment = match.group(4) ?? '';
+    if (!_blockMathEnvironmentNames.contains(environment)) return original;
+
+    final formula = (match.group(3) ?? '').trim();
+    if (formula.isEmpty || formula.contains(r'$')) return original;
+    if (!formula.endsWith('\\end{$environment}')) return original;
+
+    final leadingBreak = match.group(1)?.isNotEmpty == true ? '\n' : '';
+    return '$leadingBreak\n\$\$$formula\$\$\n';
+  });
 }
 
 String _normalizeBareMathLine(String line) {

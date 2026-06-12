@@ -84,6 +84,75 @@ class StudySkillRegistry(
             successPatterns = listOf("正确识别题型", "应用正确逻辑规则", "验证答案合理性"),
             failurePatterns = listOf("混淆必要充分条件", "忽略隐含前提", "过度推理", "偷换概念")
         ))
+
+        // 1.5. 数学真题解题策略
+        registerBuiltinSkill(StudySkill(
+            id = "math-problem-solving",
+            name = "数学真题解题策略",
+            description = "针对管综数学真题的解题策略，覆盖条件充分性、排列组合、概率、几何、代数和应用题",
+            supportedScenes = listOf(
+                StudyScene.PROBLEM_SOLVING,
+                StudyScene.CONCEPT_EXPLAIN,
+                StudyScene.ERROR_ANALYSIS,
+                StudyScene.MOCK_EXAM
+            ),
+            priority = 9,
+            instructions = """
+## 数学真题解题策略
+
+### 解题总流程
+1. **先确认题型**：区分“问题求解”和“条件充分性判断”。
+2. **抽取已知量**：把题干中的数量关系、范围条件、图形关系写清楚。
+3. **选择方法**：优先用考试中稳定、低计算量的方法。
+4. **验证选项**：代入、排除、边界值、特殊值都可以作为快速检验。
+5. **标记易错点**：讲清楚用户容易漏掉的隐含条件或计算陷阱。
+
+### 条件充分性判断
+- 先分别判断条件(1)、条件(2)是否单独充分。
+- 如果都不单独充分，再判断二者联合是否充分。
+- 注意“能推出唯一答案”才是充分，不是“看起来更接近答案”。
+- 输出时明确对应 A/B/C/D/E 五种标准选项规则。
+
+### 常见模块策略
+
+#### 代数与方程
+- 优先建立等式/不等式关系，注意取值范围。
+- 遇到二次方程、根与系数关系时，检查判别式和正负条件。
+
+#### 排列组合与概率
+- 先判断是“分类加法”还是“分步乘法”。
+- 对“至少/至多”优先考虑反面计数。
+- 概率题先明确样本空间是否等可能。
+
+#### 几何与解析几何
+- 画图标注已知量，优先找相似、勾股、面积关系。
+- 解析几何题注意斜率、距离、圆和直线位置关系。
+
+#### 应用题
+- 明确单位和变量含义，防止把比例、增长率、速度、效率混用。
+- 优先列最小必要方程，避免过度设未知数。
+
+### 公式与渲染要求
+- 公式使用 LaTeX：行内用 `\(...\)`，块级用 `\[...\]`。
+- 不要把公式写成纯文本截图式表达。
+- 如果工具返回的原解析公式格式不清晰，可以建议 `propose_content_patch` 改进解析。
+
+### 工具使用建议
+- 优先使用 `exam_question_search` 搜索同年份、同题型或同知识点真题。
+- 使用 `exam_question_explain` 获取题干、答案、解析和来源。
+- 使用 `knowledge_search` 查找对应数学知识点。
+- 深度讲解数学题时优先委派 `delegate_to_math_tutor`。
+""".trimIndent(),
+            toolPreferences = listOf(
+                "exam_question_search",
+                "exam_question_explain",
+                "exam_similar_find",
+                "knowledge_search",
+                "delegate_to_math_tutor"
+            ),
+            successPatterns = listOf("准确区分题型", "列出关键数量关系", "验证条件充分性", "指出计算陷阱"),
+            failurePatterns = listOf("忽略取值范围", "条件充分性判断顺序错误", "样本空间不清", "公式渲染不规范")
+        ))
         
         // 2. 写作评分策略
         registerBuiltinSkill(StudySkill(

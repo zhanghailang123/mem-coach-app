@@ -14,11 +14,21 @@ import cn.com.memcoach.MemCoachApplication
 import cn.com.memcoach.agent.ChatMessage
 import org.json.JSONObject
 import org.json.JSONArray
+import java.util.Locale
 
 class VocabularyToolHandler(
     private val vocabularyDao: VocabularyDao,
     private val reviewDao: VocabularyReviewDao
 ) : ToolHandler {
+
+    private data class ParsedVocabulary(
+        val phonetic: String?,
+        val definitions: JSONArray,
+        val explanation: String,
+        val tags: JSONArray,
+        val synonyms: JSONArray?,
+        val confusables: JSONArray?
+    )
 
     override val toolNames = setOf(
         "vocabulary_list",
@@ -26,6 +36,8 @@ class VocabularyToolHandler(
         "vocabulary_review",
         "vocabulary_search",
         "vocabulary_add",
+        "vocabulary_delete",
+        "vocabulary_regenerate",
         "vocabulary_stats"
     )
 
@@ -37,6 +49,8 @@ class VocabularyToolHandler(
             "vocabulary_review" -> submitReview(args)
             "vocabulary_search" -> searchVocabulary(args)
             "vocabulary_add" -> addVocabulary(args)
+            "vocabulary_delete" -> deleteVocabulary(args)
+            "vocabulary_regenerate" -> regenerateVocabulary(args)
             "vocabulary_stats" -> getVocabularyStats()
             else -> """{"error":"unknown tool"}"""
         }
@@ -67,6 +81,16 @@ class VocabularyToolHandler(
             name = "vocabulary_add",
             description = "添加新单词到本地词库",
             parameters = """{"type":"object","properties":{"word":{"type":"string"},"phonetic":{"type":"string"},"definitions":{"type":"string"},"explanation":{"type":"string"},"tags":{"type":"string"}},"required":["word"]}"""
+        ),
+        ToolDefinition(
+            name = "vocabulary_delete",
+            description = "从本地词库删除单词",
+            parameters = """{"type":"object","properties":{"word_id":{"type":"string"}},"required":["word_id"]}"""
+        ),
+        ToolDefinition(
+            name = "vocabulary_regenerate",
+            description = "使用 code-199 风格提示词重新生成单词深度解析",
+            parameters = """{"type":"object","properties":{"word_id":{"type":"string"}},"required":["word_id"]}"""
         ),
         ToolDefinition(
             name = "vocabulary_stats",
@@ -180,15 +204,16 @@ class VocabularyToolHandler(
     }
 
     private suspend fun addVocabulary(args: JsonObject) = withContext(Dispatchers.IO) {
-        val wordText = args["word"]?.jsonPrimitive?.contentOrNull?.trim()
+        val rawWordText = args["word"]?.jsonPrimitive?.contentOrNull
             ?: return@withContext """{"error":"word is required"}"""
+        val wordText = normalizeWordText(rawWordText)
 
         if (wordText.isEmpty()) {
             return@withContext """{"error":"word is empty"}"""
         }
 
         // 检查单词是否已存在
-        val existing = vocabularyDao.getByWord(wordText)
+        val existing = vocabularyDao.getByWordIgnoreCase(wordText)
         if (existing != null) {
             return@withContext buildJsonObject {
                 put("success", true)
@@ -199,56 +224,31 @@ class VocabularyToolHandler(
         }
 
         // 调用 AI 导师进行单词深度解析
-        var phonetic: String? = null
-        var definitionsRaw = "[]"
-        var explanation = "### $wordText\n暂无详细释义。"
-        var tags = "[]"
-        var synonyms: String? = null
-        var confusables: String? = null
-        var aiParsed = false
-        var aiError: String? = null
-
-        try {
-            val prompt = buildVocabularyArticlePrompt(wordText)
-            val systemPrompt = "你是 code-199 风格的考研英语词汇辅导名师，讲课风趣、直接、重实战。你必须只输出合法 JSON，不要输出 Markdown 代码块、解释文字或 YAML Frontmatter。"
-
-            val messages = listOf(
-                ChatMessage(role = "system", content = systemPrompt),
-                ChatMessage(role = "user", content = prompt)
-            )
-
-            val client = MemCoachApplication.instance.llmClient
-            val response = client.completeTurn(messages = messages, tools = null, modelId = null)
-            if (response.finishReason == "error") {
-                error(response.content)
-            }
-
-            val jsonStr = extractJsonObject(response.content)
-            val jsonObject = JSONObject(jsonStr)
-            phonetic = jsonObject.optStringOrNull("phonetic")
-            definitionsRaw = normalizeDefinitions(jsonObject.optJSONArray("definitions")).toString()
-            val generatedExplanation = jsonObject.optStringOrNull("explanation")
-            explanation = generatedExplanation ?: "### $wordText\n解析生成失败。"
-            tags = normalizeTags(jsonObject.optJSONArray("tags")).toString()
-            synonyms = normalizeWordMeaningArray(jsonObject.optJSONArray("synonyms"))?.toString()
-            confusables = normalizeWordMeaningArray(jsonObject.optJSONArray("confusables"))?.toString()
-            aiParsed = definitionsRaw != "[]" && !generatedExplanation.isNullOrBlank()
+        val parsed = try {
+            parseVocabularyWithAi(wordText)
         } catch (e: Exception) {
-            aiError = e.message ?: e::class.java.simpleName
             android.util.Log.e("VocabularyToolHandler", "AI 解析单词出错", e)
+            return@withContext buildJsonObject {
+                put("success", false)
+                put("error", "AI 解析失败：${e.message ?: e::class.java.simpleName}")
+            }.toString()
         }
 
         // 构造新单词实体
-        val vocabId = "vocab-${UUID.randomUUID()}"
+        val vocabId = resolveVocabularyId(wordText)
+        val now = System.currentTimeMillis()
         val vocab = Vocabulary(
             id = vocabId,
             word = wordText,
-            phonetic = phonetic,
-            definitions = definitionsRaw,
-            synonyms = synonyms,
-            confusables = confusables,
-            tags = tags,
-            explanation = explanation
+            phonetic = parsed.phonetic,
+            definitions = parsed.definitions.toString(),
+            synonyms = parsed.synonyms?.toString(),
+            confusables = parsed.confusables?.toString(),
+            tags = parsed.tags.toString(),
+            explanation = parsed.explanation,
+            nextReviewAt = now,
+            createdAt = now,
+            updatedAt = now
         )
 
         try {
@@ -257,11 +257,67 @@ class VocabularyToolHandler(
                 put("success", true)
                 put("id", vocabId)
                 put("word", wordText)
-                put("ai_parsed", aiParsed)
-                putNullable("ai_error", aiError)
+                put("ai_parsed", true)
             }.toString()
         } catch (e: Exception) {
             """{"error":"${e.message ?: "failed to insert"}"}"""
+        }
+    }
+
+    private suspend fun deleteVocabulary(args: JsonObject) = withContext(Dispatchers.IO) {
+        val wordId = args["word_id"]?.jsonPrimitive?.contentOrNull
+            ?: return@withContext """{"error":"word_id required"}"""
+        val word = vocabularyDao.getById(wordId)
+            ?: return@withContext """{"error":"word not found"}"""
+
+        val deleted = vocabularyDao.deleteById(wordId)
+        if (deleted <= 0) {
+            return@withContext """{"error":"word not found"}"""
+        }
+
+        buildJsonObject {
+            put("success", true)
+            put("id", word.id)
+            put("word", word.word)
+        }.toString()
+    }
+
+    private suspend fun regenerateVocabulary(args: JsonObject) = withContext(Dispatchers.IO) {
+        val wordId = args["word_id"]?.jsonPrimitive?.contentOrNull
+            ?: return@withContext """{"error":"word_id required"}"""
+        val word = vocabularyDao.getById(wordId)
+            ?: return@withContext """{"error":"word not found"}"""
+
+        val parsed = try {
+            parseVocabularyWithAi(word.word)
+        } catch (e: Exception) {
+            android.util.Log.e("VocabularyToolHandler", "AI 重新生成单词解析出错", e)
+            return@withContext buildJsonObject {
+                put("success", false)
+                put("error", "AI 重新生成失败：${e.message ?: e::class.java.simpleName}")
+            }.toString()
+        }
+
+        val updated = word.copy(
+            phonetic = parsed.phonetic,
+            definitions = parsed.definitions.toString(),
+            synonyms = parsed.synonyms?.toString(),
+            confusables = parsed.confusables?.toString(),
+            tags = parsed.tags.toString(),
+            explanation = parsed.explanation,
+            updatedAt = System.currentTimeMillis()
+        )
+
+        try {
+            vocabularyDao.update(updated)
+            buildJsonObject {
+                put("success", true)
+                put("id", word.id)
+                put("word", word.word)
+                put("ai_parsed", true)
+            }.toString()
+        } catch (e: Exception) {
+            """{"error":"${e.message ?: "failed to update"}"}"""
         }
     }
 
@@ -270,7 +326,7 @@ class VocabularyToolHandler(
         val learning = vocabularyDao.countByStatus("learning")
         val mastered = vocabularyDao.countByStatus("mastered")
         val newWords = vocabularyDao.countByStatus("new")
-        val total = review + learning + mastered + newWords
+        val total = vocabularyDao.countAll()
 
         // 返回各状态单词数
         buildJsonObject {
@@ -287,24 +343,97 @@ class VocabularyToolHandler(
         if (value != null) put(key, value) else put(key, JsonNull)
     }
 
+    private suspend fun parseVocabularyWithAi(wordText: String): ParsedVocabulary {
+        val prompt = buildVocabularyArticlePrompt(wordText)
+        val systemPrompt = """
+            你是 code-199 风格的考研英语词汇辅导名师，讲课风趣、直接、重实战。
+            你的输出会被移动端直接解析入库，所以必须只输出一个合法 JSON 对象。
+            不要输出 Markdown 代码块、YAML Frontmatter、解释文字或额外说明。
+        """.trimIndent()
+
+        val messages = listOf(
+            ChatMessage(role = "system", content = systemPrompt),
+            ChatMessage(role = "user", content = prompt)
+        )
+
+        val client = MemCoachApplication.instance.llmClient
+        val response = client.completeTurn(messages = messages, tools = null, modelId = null)
+        if (response.finishReason == "error") {
+            error(response.content.ifBlank { "LLM 返回错误" })
+        }
+
+        val jsonObject = JSONObject(extractJsonObject(response.content))
+        val definitions = normalizeDefinitions(jsonObject.optJSONArray("definitions"))
+        require(definitions.length() > 0) { "LLM 返回的 definitions 为空" }
+
+        val explanation = jsonObject.optStringOrNull("explanation")
+        require(!explanation.isNullOrBlank()) { "LLM 返回的 explanation 为空" }
+        require(explanation.length >= 120) { "LLM 返回的 explanation 过短" }
+        val requiredMarkers = listOf("核心记忆锚点", "考研核心考法", "考研写作替换")
+        require(requiredMarkers.all { explanation.contains(it) }) {
+            "LLM 返回的 explanation 缺少 code-199 标准章节"
+        }
+
+        return ParsedVocabulary(
+            phonetic = jsonObject.optStringOrNull("phonetic"),
+            definitions = definitions,
+            explanation = explanation,
+            tags = normalizeTags(jsonObject.optJSONArray("tags")),
+            synonyms = normalizeWordMeaningArray(jsonObject.optJSONArray("synonyms")),
+            confusables = normalizeWordMeaningArray(jsonObject.optJSONArray("confusables"))
+        )
+    }
+
+    private suspend fun resolveVocabularyId(wordText: String): String {
+        val baseId = "vocab-${slugifyVocabularyWord(wordText)}"
+        if (vocabularyDao.getById(baseId) == null) return baseId
+        return "$baseId-${UUID.randomUUID().toString().take(8)}"
+    }
+
+    private fun normalizeWordText(raw: String): String {
+        return raw.trim().replace(Regex("\\s+"), " ")
+    }
+
+    private fun slugifyVocabularyWord(wordText: String): String {
+        return wordText
+            .lowercase(Locale.US)
+            .replace(Regex("[^a-z0-9]+"), "-")
+            .trim('-')
+            .takeIf { it.isNotBlank() }
+            ?: UUID.randomUUID().toString().take(8)
+    }
+
     private fun buildVocabularyArticlePrompt(wordText: String): String {
         return """
             请为单词或短语 "$wordText" 生成一份 code-199 风格的考研英语深度词汇笔记。
 
             风格要求：
-            1. 像面对面辅导一样，开篇直接，语气风趣但干货密集。
+            1. 像面对面辅导一样，开篇要直接，建议以“考研党你好！”开场；语气风趣但干货密集。
             2. 重点服务 MEM/MBA/管理类联考英语备考，直击阅读、写作、翻译中的高频用法。
-            3. explanation 字段必须是 Markdown 正文，包含以下结构：
-               - 开篇引入（一两句话，直击单词地位或常见误区）
-               - ### 一、 核心记忆锚点（Root & Logic）
-               - ### 二、 考研核心考法（The "Killer" Meaning）
-               - ### 三、 词性变体与派生词（Word Family）
-               - ### 四、 形近词/近义词辨析（Look-alikes & Synonyms）
-               - ### 五、 考研写作替换（Writing Upgrade）
-               - ### 六、 沉浸式记忆（Scenario）
-               - 结尾鼓励（一句话总结）
-            4. 在“考研核心考法”里必须给 1-2 个类似考研真题语境的英文例句、中文翻译和解析。
+            3. 使用 **粗体** 强调关键词，使用 > 引用块展示例句，风格接近 code-199 已有词条。
+
+            explanation 字段必须是 Markdown 正文，包含以下章节，标题文字必须完全一致：
+            - 开篇引入（一两句话，直击单词在考研中的地位或常见误区）
+            - ### 一、 核心记忆锚点（Root & Logic）
+            - ### 二、 考研核心考法（The "Killer" Meaning）
+            - ### 三、 词性变体与派生词（Word Family）
+            - ### 四、 形近词/近义词辨析（Look-alikes & Synonyms）
+            - ### 五、 考研写作替换（Writing Upgrade）
+            - ### 六、 沉浸式记忆（Scenario）
+            - 结尾鼓励（一句话总结）
+
+            内容要求：
+            1. 核心记忆锚点必须讲清词根、构词或短语逻辑，不能只给中文释义。
+            2. 在“考研核心考法”里必须给 1-2 个类似考研真题语境的英文例句、中文翻译和解析。
+            3. 在“词性变体与派生词”里列出常见派生词，给出词性、中文释义和简短例句。
+            4. 在“形近词/近义词辨析”里列出 2-3 个 confusables 和 2-3 个 synonyms，并解释区别。
             5. 在“写作替换”里必须给 Low Level vs High Level 对比。
+            6. phonetic 必须是 IPA 音标；如果是短语，也要给自然连读音标或常见读音。
+
+            JSON 字段要求：
+            1. explanation 字段只放 Markdown 正文，不要包含 YAML Frontmatter，不要包含 ```markdown。
+            2. definitions 列表中的每一项必须包含 pos、part、translation、text；禁止只给 meaning。
+            3. tags 必须且只能从白名单中选择 2-4 个，禁止发明新标签。
 
             只允许输出一个合法 JSON 对象，不要输出 YAML Frontmatter，不要输出 ```json 代码块，不要输出解释文字。
             所有换行必须在 JSON 字符串里写成 \n 转义，不要在字符串中直接换行。

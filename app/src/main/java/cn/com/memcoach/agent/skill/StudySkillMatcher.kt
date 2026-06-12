@@ -17,6 +17,23 @@ class StudySkillMatcher(
         
         /** 最小匹配阈值 */
         private const val MIN_MATCH_THRESHOLD = 0.3
+
+        private val MATH_KEYWORDS = listOf(
+            "math", "数学", "管综数学", "条件充分性", "充分性判断", "问题求解",
+            "排列组合", "概率", "几何", "解析几何", "代数", "方程", "不等式",
+            "函数", "数列", "应用题", "最值", "韦达", "圆", "三角形",
+            "速度", "效率", "工程", "利润", "浓度", "集合", "样本空间"
+        )
+
+        private val LOGIC_KEYWORDS = listOf(
+            "logic", "逻辑", "推理", "假言", "直言", "削弱", "加强", "假设",
+            "支持", "论点", "论据", "充分条件", "必要条件", "矛盾", "命题"
+        )
+
+        private val WRITING_KEYWORDS = listOf(
+            "writing", "写作", "作文", "论证有效性", "论说文", "审题", "立意",
+            "范文", "批改", "评分", "逻辑漏洞"
+        )
     }
     
     /**
@@ -26,7 +43,11 @@ class StudySkillMatcher(
      * @param context 学习上下文
      * @return 匹配结果列表，按匹配度降序排列
      */
-    fun match(scene: StudyScene, context: AgentPromptContext? = null): List<StudySkillMatchResult> {
+    fun match(
+        scene: StudyScene,
+        context: AgentPromptContext? = null,
+        userMessage: String? = null
+    ): List<StudySkillMatchResult> {
         val allSkills = skillRegistry.getAllEnabledSkills()
         
         if (allSkills.isEmpty()) {
@@ -35,13 +56,13 @@ class StudySkillMatcher(
         
         // 计算每个 Skill 的匹配分数
         val matchResults = allSkills.mapNotNull { skill ->
-            val confidence = calculateConfidence(skill, scene, context)
+            val confidence = calculateConfidence(skill, scene, context, userMessage)
             
             if (confidence >= MIN_MATCH_THRESHOLD) {
                 StudySkillMatchResult(
                     skill = skill,
                     confidence = confidence,
-                    triggerReason = generateTriggerReason(skill, scene, context)
+                    triggerReason = generateTriggerReason(skill, scene, context, userMessage)
                 )
             } else {
                 null
@@ -61,9 +82,13 @@ class StudySkillMatcher(
      * @param context 学习上下文
      * @return 每个场景对应的匹配结果
      */
-    fun matchBatch(scenes: List<StudyScene>, context: AgentPromptContext? = null): Map<StudyScene, List<StudySkillMatchResult>> {
+    fun matchBatch(
+        scenes: List<StudyScene>,
+        context: AgentPromptContext? = null,
+        userMessage: String? = null
+    ): Map<StudyScene, List<StudySkillMatchResult>> {
         return scenes.associateWith { scene ->
-            match(scene, context)
+            match(scene, context, userMessage)
         }
     }
     
@@ -78,13 +103,14 @@ class StudySkillMatcher(
     private fun calculateConfidence(
         skill: StudySkill,
         scene: StudyScene,
-        context: AgentPromptContext?
+        context: AgentPromptContext?,
+        userMessage: String?
     ): Double {
         // 1. 场景匹配度（基础分）
         val sceneScore = skill.calculateSceneMatchScore(scene)
         
         // 2. 上下文适配度
-        val contextScore = calculateContextScore(skill, context)
+        val contextScore = calculateContextScore(skill, context, userMessage)
         
         // 3. 工具偏好匹配度
         val toolScore = calculateToolScore(skill, context)
@@ -93,7 +119,9 @@ class StudySkillMatcher(
         val weights = doubleArrayOf(0.6, 0.3, 0.1) // 场景、上下文、工具
         val scores = doubleArrayOf(sceneScore, contextScore, toolScore)
         
-        return weights.zip(scores).sumOf { (weight, score) -> weight * score }
+        val rawScore = weights.zip(scores).sumOf { (weight, score) -> weight * score }
+        return (rawScore - calculateDomainMismatchPenalty(skill, context, userMessage))
+            .coerceIn(0.0, 1.0)
     }
     
     /**
@@ -103,43 +131,89 @@ class StudySkillMatcher(
      * @param context 学习上下文
      * @return 上下文适配度（0.0 - 1.0）
      */
-    private fun calculateContextScore(skill: StudySkill, context: AgentPromptContext?): Double {
-        if (context == null) return 0.5
+    private fun calculateContextScore(
+        skill: StudySkill,
+        context: AgentPromptContext?,
+        userMessage: String?
+    ): Double {
+        if (context == null && userMessage.isNullOrBlank()) return 0.5
         
         var score = 0.5 // 基础分
+        val isMathContext = isMathContext(userMessage, context)
+        val isLogicContext = isLogicContext(userMessage, context)
+        val isWritingContext = isWritingContext(userMessage, context)
         
         when (skill.id) {
             "logic-problem-solving" -> {
                 // 如果用户逻辑题正确率低，逻辑解题 Skill 更有价值
-                val correctRate = context.learningContext?.correctRate ?: 0.5f
+                val correctRate = context?.learningContext?.correctRate ?: 0.5f
                 if (correctRate < 0.7f) {
                     score += 0.3
+                }
+                if (isLogicContext) {
+                    score += 0.3
+                }
+                if (isMathContext || isWritingContext) {
+                    score -= 0.5
+                }
+            }
+            "math-problem-solving" -> {
+                if (isMathContext) {
+                    score += 0.45
+                } else {
+                    score -= 0.3
+                }
+                if (isLogicContext || isWritingContext) {
+                    score -= 0.4
                 }
             }
             "writing-essay-scoring" -> {
                 // 如果用户写作相关知识点薄弱，写作 Skill 更有价值
-                val hasWritingWeakness = context.weakPoints.any { 
+                val hasWritingWeakness = context?.weakPoints?.any {
                     it.nodeName.contains("写作") || it.nodeName.contains("论证") 
-                }
+                } == true
                 if (hasWritingWeakness) {
                     score += 0.4
+                }
+                if (isWritingContext) {
+                    score += 0.3
+                }
+                if (isMathContext || isLogicContext) {
+                    score -= 0.5
                 }
             }
             "spaced-repetition" -> {
                 // 如果有待背诵内容，间隔重复 Skill 更有价值
-                if (context.memorizedItems.isNotEmpty()) {
+                if (context?.memorizedItems?.isNotEmpty() == true) {
                     score += 0.5
                 }
             }
             "weakness-analysis" -> {
                 // 如果有明确的薄弱点，薄弱点分析 Skill 更有价值
-                if (context.weakPoints.isNotEmpty()) {
+                if (context?.weakPoints?.isNotEmpty() == true) {
                     score += 0.4
                 }
             }
         }
         
         return score.coerceIn(0.0, 1.0)
+    }
+
+    private fun calculateDomainMismatchPenalty(
+        skill: StudySkill,
+        context: AgentPromptContext?,
+        userMessage: String?
+    ): Double {
+        val isMathContext = isMathContext(userMessage, context)
+        val isLogicContext = isLogicContext(userMessage, context)
+        val isWritingContext = isWritingContext(userMessage, context)
+
+        return when (skill.id) {
+            "math-problem-solving" -> if (isLogicContext || isWritingContext) 0.35 else 0.0
+            "logic-problem-solving" -> if (isMathContext || isWritingContext) 0.35 else 0.0
+            "writing-essay-scoring" -> if (isMathContext || isLogicContext) 0.35 else 0.0
+            else -> 0.0
+        }
     }
     
     /**
@@ -165,7 +239,8 @@ class StudySkillMatcher(
     private fun generateTriggerReason(
         skill: StudySkill,
         scene: StudyScene,
-        context: AgentPromptContext?
+        context: AgentPromptContext?,
+        userMessage: String?
     ): String {
         val reasons = mutableListOf<String>()
         
@@ -189,6 +264,11 @@ class StudySkillMatcher(
                         reasons.add("用户逻辑题正确率较低（${"%.0f".format(correctRate * 100)}%）")
                     }
                 }
+                "math-problem-solving" -> {
+                    if (isMathContext(userMessage, context)) {
+                        reasons.add("用户消息或上下文包含数学真题关键词")
+                    }
+                }
                 "spaced-repetition" -> {
                     if (context.memorizedItems.isNotEmpty()) {
                         reasons.add("用户有待背诵内容（${context.memorizedItems.size}项）")
@@ -204,6 +284,32 @@ class StudySkillMatcher(
         
         return reasons.joinToString("；")
     }
+
+    private fun buildDomainText(userMessage: String?, context: AgentPromptContext?): String {
+        val weakPointText = context?.weakPoints?.joinToString(" ") { it.nodeName }.orEmpty()
+        return listOfNotNull(
+            userMessage,
+            context?.currentTopic,
+            context?.conversationSummary,
+            weakPointText
+        ).joinToString(" ").lowercase()
+    }
+
+    private fun containsAny(text: String, keywords: List<String>): Boolean {
+        return keywords.any { keyword -> text.contains(keyword.lowercase()) }
+    }
+
+    private fun isMathContext(userMessage: String?, context: AgentPromptContext?): Boolean {
+        return containsAny(buildDomainText(userMessage, context), MATH_KEYWORDS)
+    }
+
+    private fun isLogicContext(userMessage: String?, context: AgentPromptContext?): Boolean {
+        return containsAny(buildDomainText(userMessage, context), LOGIC_KEYWORDS)
+    }
+
+    private fun isWritingContext(userMessage: String?, context: AgentPromptContext?): Boolean {
+        return containsAny(buildDomainText(userMessage, context), WRITING_KEYWORDS)
+    }
     
     /**
      * 获取推荐的 Skill（用于 UI 展示）
@@ -212,8 +318,12 @@ class StudySkillMatcher(
      * @param context 学习上下文
      * @return 推荐的 Skill 列表（最多 3 个）
      */
-    fun getRecommendedSkills(scene: StudyScene, context: AgentPromptContext? = null): List<StudySkill> {
-        return match(scene, context)
+    fun getRecommendedSkills(
+        scene: StudyScene,
+        context: AgentPromptContext? = null,
+        userMessage: String? = null
+    ): List<StudySkill> {
+        return match(scene, context, userMessage)
             .take(3)
             .map { it.skill }
     }

@@ -92,14 +92,14 @@ class SettingsPage extends ConsumerWidget {
           const _SectionHeader(title: '关于'),
           ListTile(
             leading: const Icon(Icons.info_outline),
-            title: const Text('关于 MEM Coach'),
+            title: const Text('关于 MEM 搭子'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               showDialog(
                 context: context,
                 builder: (context) => AlertDialog(
-                  title: const Text('关于 MEM Coach'),
-                  content: const Text('MEM Coach v0.1.0\n\n你的专属 AI 考研教练。'),
+                  title: const Text('关于 MEM 搭子'),
+                  content: const Text('MEM 搭子 v0.1.0\n\n你的专属 AI 考研搭子。'),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),

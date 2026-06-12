@@ -154,7 +154,7 @@ class _Header extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'MEM Coach',
+                'MEM 搭子',
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w900,

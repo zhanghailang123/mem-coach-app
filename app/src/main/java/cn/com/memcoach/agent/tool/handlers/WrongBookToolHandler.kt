@@ -4,7 +4,7 @@ import cn.com.memcoach.agent.tool.ToolDefinition
 import cn.com.memcoach.agent.tool.ToolHandler
 import cn.com.memcoach.data.dao.AnswerRecordDao
 import cn.com.memcoach.data.dao.ExamQuestionDao
-import cn.com.memcoach.data.entity.AnswerRecord
+import cn.com.memcoach.study.AnswerSubmissionRecorder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
@@ -15,7 +15,8 @@ import java.util.Calendar
  */
 class WrongBookToolHandler(
     private val answerRecordDao: AnswerRecordDao,
-    private val questionDao: ExamQuestionDao
+    private val questionDao: ExamQuestionDao,
+    private val answerSubmissionRecorder: AnswerSubmissionRecorder
 ) : ToolHandler {
 
     override val toolNames = setOf(
@@ -91,21 +92,33 @@ class WrongBookToolHandler(
     private suspend fun submitAnswer(args: JsonObject) = withContext(Dispatchers.IO) {
         val questionId = args["question_id"]?.jsonPrimitive?.content ?: return@withContext """{"error":"question_id required"}"""
         val userAnswer = args["user_answer"]?.jsonPrimitive?.content ?: return@withContext """{"error":"user_answer required"}"""
-        val correctAnswer = args["correct_answer"]?.jsonPrimitive?.content ?: return@withContext """{"error":"correct_answer required"}"""
-        val isCorrect = args["is_correct"]?.jsonPrimitive?.boolean ?: return@withContext """{"error":"is_correct required"}"""
+        val correctAnswer = args["correct_answer"]?.jsonPrimitive?.contentOrNull
+        val isCorrect = args["is_correct"]?.jsonPrimitive?.booleanOrNull
         val timeSpent = args["time_spent"]?.jsonPrimitive?.intOrNull ?: 0
 
-        answerRecordDao.insert(
-            AnswerRecord(
+        val result = try {
+            answerSubmissionRecorder.submit(
                 questionId = questionId,
                 userAnswer = userAnswer,
-                correctAnswer = correctAnswer,
-                isCorrect = isCorrect,
-                timeSpent = timeSpent
+                correctAnswerOverride = correctAnswer,
+                isCorrectOverride = isCorrect,
+                timeSpentSeconds = timeSpent
             )
-        )
+        } catch (e: IllegalArgumentException) {
+            return@withContext """{"error":"${e.message ?: "submit failed"}"}"""
+        }
 
-        """{"success":true,"message":"答题记录已保存"}"""
+        buildJsonObject {
+            put("success", true)
+            put("message", "答题记录已保存")
+            put("correct", result.correct)
+            put("user_answer", result.userAnswer)
+            put("correct_answer", result.correctAnswer)
+            put("explanation", result.explanation)
+            put("hint", result.hint)
+            if (result.masteryLevel != null) put("mastery_level", result.masteryLevel) else put("mastery_level", JsonNull)
+            if (result.knowledgeId != null) put("knowledge_id", result.knowledgeId) else put("knowledge_id", JsonNull)
+        }.toString()
     }
 
     private suspend fun getStudyStats(args: JsonObject) = withContext(Dispatchers.IO) {
