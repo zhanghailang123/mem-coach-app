@@ -446,6 +446,20 @@ class _ChatSheetState extends State<ChatSheet> {
     }
   }
 
+  Future<void> _generateConversationTitle() async {
+    if (_conversationId == null) return;
+    final userMessages = _messages.where((m) => m.role == _ChatRole.user).toList();
+    if (userMessages.isEmpty) return;
+    final firstUserMessage = userMessages.first.content.trim();
+    if (firstUserMessage.isEmpty) return;
+    final title = firstUserMessage.length > 20 ? '${firstUserMessage.substring(0, 20)}...' : firstUserMessage;
+    try {
+      await MemCoachNativeBridge.updateConversationTitle(conversationId: _conversationId!, title: title);
+    } catch (e) {
+      // 静默失败
+    }
+  }
+
   @override
   void dispose() {
     _sub?.cancel();
