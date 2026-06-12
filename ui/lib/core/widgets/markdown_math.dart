@@ -44,11 +44,12 @@ class MarkdownMathView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveTextColor = textColor ?? Colors.black87;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final effectiveTextColor = textColor ?? (isDark ? const Color(0xFFE5E5E7) : Colors.black87);
     final effectiveMathColor =
         mathColor ?? Theme.of(context).colorScheme.primary;
     final effectiveStyleSheet = styleSheet ??
-        examMarkdownStyleSheet(context, baseFontSize: baseFontSize);
+        examMarkdownStyleSheet(context, baseFontSize: baseFontSize, textColor: effectiveTextColor);
 
     return MarkdownBody(
       data: prepareMarkdownMath(data),
@@ -126,8 +127,10 @@ MarkdownStyleSheet examMarkdownStyleSheet(
   Color? textColor,
 }) {
   final colorScheme = Theme.of(context).colorScheme;
-  final foreground = textColor ?? Colors.black87;
-  final muted = Colors.black54;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  final foreground = textColor ?? (isDark ? const Color(0xFFE5E5E7) : Colors.black87);
+  final muted = isDark ? const Color(0xFF98989D) : Colors.black54;
+  final borderColor = isDark ? Colors.white.withOpacity(0.12) : Colors.black.withOpacity(0.08);
 
   return MarkdownStyleSheet(
     p: TextStyle(
@@ -200,7 +203,7 @@ MarkdownStyleSheet examMarkdownStyleSheet(
     horizontalRuleDecoration: BoxDecoration(
       border: Border(
         top: BorderSide(
-          color: Colors.black.withOpacity(0.08),
+          color: borderColor,
           width: 1,
         ),
       ),
@@ -215,7 +218,7 @@ MarkdownStyleSheet examMarkdownStyleSheet(
       fontSize: baseFontSize - 1,
       height: 1.45,
     ),
-    tableBorder: TableBorder.all(color: Colors.black.withOpacity(0.08)),
+    tableBorder: TableBorder.all(color: borderColor),
     tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
   );
 }

@@ -23,7 +23,6 @@ class ChatSheet extends StatefulWidget {
     this.pageContext,
   });
 
-
   /// 会话 ID，如果为 null 则创建新会话
   final int? conversationId;
 
@@ -40,21 +39,31 @@ class ChatSheet extends StatefulWidget {
     int? conversationId,
     String? initialText,
     Map<String, dynamic>? pageContext,
-  }) {
+  }) async {
+    // 如果没有指定会话ID，尝试加载最新会话
+    int? targetConversationId = conversationId;
+    if (targetConversationId == null) {
+      try {
+        final conversations = await MemCoachNativeBridge.getConversations();
+        if (conversations.isNotEmpty) {
+          targetConversationId = conversations.first['id'] as int?;
+        }
+      } catch (e) {
+        // 获取失败，使用null（会创建新会话）
+      }
+    }
 
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => ChatSheet(
-        conversationId: conversationId,
+        conversationId: targetConversationId,
         initialText: initialText,
         pageContext: pageContext,
       ),
-
     );
   }
-
 
   @override
   State<ChatSheet> createState() => _ChatSheetState();
@@ -72,15 +81,14 @@ class _ChatSheetState extends State<ChatSheet> {
   final AgentStreamReducer _agentStreamReducer = const AgentStreamReducer();
   AgentStreamState _agentStreamState = const AgentStreamState();
 
-  
   // 会话状态
   int? _conversationId;
   bool _isLoadingConversation = false;
-  
+
   // 工具活动状态
   final List<ToolActivity> _toolActivities = [];
   bool _toolBarExpanded = false;
-  
+
   // 深度思考状态
   String _thinkingText = '';
   bool _isThinking = false;
@@ -89,7 +97,7 @@ class _ChatSheetState extends State<ChatSheet> {
   int? _thinkingEndTime;
   String _reasoningEffort = '中';
   static const String _thinkingPlaceholder = '正在理解你的问题...';
-  
+
   // 学习状态
   String _currentState = '';
   String _currentStateName = '';
@@ -97,17 +105,16 @@ class _ChatSheetState extends State<ChatSheet> {
   // 斜杠命令状态
 
   bool _showSlashCommandPanel = false;
-  
+
   // 重试状态
   String? _lastSentText;
 
   // 当前轮次工具调用历史，用于下一轮传回 Native 保留 ReAct 上下文
   final List<_ToolCallRecord> _currentTurnToolCalls = [];
-  
+
   // 自动补全状态
 
   bool _isAutoCompleting = false;
-
 
   @override
   void initState() {
@@ -115,11 +122,11 @@ class _ChatSheetState extends State<ChatSheet> {
     final initialText = widget.initialText?.trim();
     if (initialText != null && initialText.isNotEmpty) {
       _controller.text = initialText;
-      _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
+      _controller.selection =
+          TextSelection.collapsed(offset: _controller.text.length);
     }
 
     _sub = MemCoachNativeBridge.agentEvents.listen(
-
       _handleAgentEvent,
       onError: (Object error) {
         if (!mounted) return;
@@ -134,7 +141,6 @@ class _ChatSheetState extends State<ChatSheet> {
     _initConversation();
   }
 
-  
   /// 初始化会话
   Future<void> _initConversation() async {
     if (widget.conversationId != null) {
@@ -145,7 +151,7 @@ class _ChatSheetState extends State<ChatSheet> {
       await _createNewConversation();
     }
   }
-  
+
   /// 创建新会话
   Future<void> _createNewConversation() async {
     try {
@@ -164,19 +170,19 @@ class _ChatSheetState extends State<ChatSheet> {
       });
     }
   }
-  
+
   /// 加载现有会话
   Future<void> _loadConversation(int conversationId) async {
     setState(() {
       _isLoadingConversation = true;
       _status = '加载会话中...';
     });
-    
+
     try {
       final messages = await MemCoachNativeBridge.getConversationMessages(
         conversationId: conversationId,
       );
-      
+
       if (!mounted) return;
       setState(() {
         _conversationId = conversationId;
@@ -195,7 +201,11 @@ class _ChatSheetState extends State<ChatSheet> {
           }
           final toolCallsRaw = msg['tool_calls'];
           final toolCalls = toolCallsRaw is List
-              ? toolCallsRaw.whereType<Map>().map((item) => _ToolCallRecord.fromJson(Map<String, dynamic>.from(item))).toList()
+              ? toolCallsRaw
+                  .whereType<Map>()
+                  .map((item) =>
+                      _ToolCallRecord.fromJson(Map<String, dynamic>.from(item)))
+                  .toList()
               : <_ToolCallRecord>[];
           _messages.add(_ChatMessage(
             role: switch (role) {
@@ -212,12 +222,11 @@ class _ChatSheetState extends State<ChatSheet> {
             toolCalls: toolCalls,
             timestamp: timestamp,
           ));
-
         }
         _isLoadingConversation = false;
         _status = '';
       });
-      
+
       // 滚动到底部
       _scrollToBottom();
     } catch (error) {
@@ -234,7 +243,8 @@ class _ChatSheetState extends State<ChatSheet> {
 
     // 使用 Reducer 模式检查事件是否需要处理
     final seq = event.raw['seq'] as int?;
-    final reduceResult = _agentStreamReducer.reduce(_agentStreamState, event.type, seq);
+    final reduceResult =
+        _agentStreamReducer.reduce(_agentStreamState, event.type, seq);
     if (!reduceResult.accepted) {
       return; // 忽略重复事件
     }
@@ -269,28 +279,30 @@ class _ChatSheetState extends State<ChatSheet> {
           }
           _thinkingText += event.content ?? '';
           _thinkingStage = 2;
-          final thinkingResult = DeepThinkingParser.extractDeepThinking(_thinkingText);
+          final thinkingResult =
+              DeepThinkingParser.extractDeepThinking(_thinkingText);
           if (thinkingResult.hasAnyContent) {
             _thinkingText = thinkingResult.toDisplayText();
           }
           break;
         case 'tool_call_start':
           _status = '正在调用工具：${event.toolName ?? 'unknown'}';
+          final toolCallId = event.toolCallId ??
+              'tool_${DateTime.now().millisecondsSinceEpoch}_${_currentTurnToolCalls.length}';
           // 插入工具调用胶囊到消息列表
           _messages.add(_ChatMessage(
             role: _ChatRole.toolChip,
             content: event.toolName ?? 'unknown',
             timestamp: DateTime.now(),
+            toolCallId: toolCallId,
+            toolArguments: event.arguments,
           ));
-          
-          _ensureAssistantMessage();
-          
+
           _currentTurnToolCalls.add(_ToolCallRecord(
-            id: event.toolCallId ?? 'tool_${DateTime.now().millisecondsSinceEpoch}_${_currentTurnToolCalls.length}',
+            id: toolCallId,
             name: event.toolName ?? 'unknown',
             arguments: event.arguments ?? '{}',
           ));
-          _attachCurrentToolCallsToLastAssistantMessage();
 
           _toolActivities.add(ToolActivity(
             toolName: event.toolName ?? 'unknown',
@@ -303,19 +315,18 @@ class _ChatSheetState extends State<ChatSheet> {
           _status = '工具调用完成：${event.toolName ?? 'unknown'}';
           // 更新最后一个工具胶囊，显示耗时
           for (var i = _messages.length - 1; i >= 0; i--) {
-            if (_messages[i].role == _ChatRole.toolChip && _messages[i].content == event.toolName) {
+            if (_messages[i].role == _ChatRole.toolChip &&
+                _isMatchingToolChip(_messages[i], event)) {
               final startTime = _messages[i].timestamp ?? DateTime.now();
               final duration = DateTime.now().difference(startTime);
-              _messages[i] = _ChatMessage(
-                role: _ChatRole.toolChip,
-                content: event.toolName ?? 'unknown',
-                timestamp: startTime,
-                toolCallId: duration.inMilliseconds.toString(), // 临时存储耗时
+              _messages[i] = _messages[i].copyWith(
+                toolResult: event.result ?? '',
+                toolDurationMs: duration.inMilliseconds,
               );
               break;
             }
           }
-          
+
           if (event.toolCallId != null) {
             _messages.add(_ChatMessage(
               role: _ChatRole.tool,
@@ -332,6 +343,18 @@ class _ChatSheetState extends State<ChatSheet> {
           break;
         case 'tool_call_error':
           _status = '工具调用失败：${event.toolName ?? 'unknown'}';
+          for (var i = _messages.length - 1; i >= 0; i--) {
+            if (_messages[i].role == _ChatRole.toolChip &&
+                _isMatchingToolChip(_messages[i], event)) {
+              final startTime = _messages[i].timestamp ?? DateTime.now();
+              final duration = DateTime.now().difference(startTime);
+              _messages[i] = _messages[i].copyWith(
+                toolError: event.error ?? '工具调用失败',
+                toolDurationMs: duration.inMilliseconds,
+              );
+              break;
+            }
+          }
           _updateToolActivity(
             event.toolName ?? 'unknown',
             ToolActivityStatus.error,
@@ -385,7 +408,7 @@ class _ChatSheetState extends State<ChatSheet> {
     });
     _scrollToBottom();
   }
-  
+
   void _updateToolActivity(
     String toolName,
     ToolActivityStatus status, {
@@ -393,7 +416,8 @@ class _ChatSheetState extends State<ChatSheet> {
   }) {
     for (var i = _toolActivities.length - 1; i >= 0; i--) {
       final activity = _toolActivities[i];
-      if (activity.toolName == toolName && activity.status == ToolActivityStatus.running) {
+      if (activity.toolName == toolName &&
+          activity.status == ToolActivityStatus.running) {
         _toolActivities[i] = activity.copyWith(
           status: status,
           result: result,
@@ -404,14 +428,24 @@ class _ChatSheetState extends State<ChatSheet> {
     }
   }
 
+  bool _isMatchingToolChip(_ChatMessage message, AgentNativeEvent event) {
+    final eventToolCallId = event.toolCallId;
+    if (eventToolCallId != null && eventToolCallId.isNotEmpty) {
+      return message.toolCallId == eventToolCallId;
+    }
+    return message.content == (event.toolName ?? 'unknown') &&
+        message.toolDurationMs == null &&
+        message.toolResult == null &&
+        message.toolError == null;
+  }
+
   /// 保存助手消息到数据库
   Future<void> _saveAssistantMessageToDatabase() async {
-
     if (_conversationId == null || _messages.isEmpty) return;
-    
+
     final lastMessage = _messages.last;
     if (lastMessage.role != _ChatRole.assistant) return;
-    
+
     try {
       await MemCoachNativeBridge.addChatMessage(
         conversationId: _conversationId!,
@@ -420,7 +454,8 @@ class _ChatSheetState extends State<ChatSheet> {
         reasoningContent: lastMessage.reasoningContent,
         toolCalls: lastMessage.toolCalls.map((call) => call.toJson()).toList(),
       );
-      for (final message in _messages.where((message) => message.role == _ChatRole.tool && message.toolCallId != null)) {
+      for (final message in _messages.where((message) =>
+          message.role == _ChatRole.tool && message.toolCallId != null)) {
         await MemCoachNativeBridge.addChatMessage(
           conversationId: _conversationId!,
           role: 'tool',
@@ -429,14 +464,14 @@ class _ChatSheetState extends State<ChatSheet> {
         );
       }
 
-      
       // 更新会话消息数量
       await MemCoachNativeBridge.updateConversationMessageCount(
         conversationId: _conversationId!,
       );
 
       // 首轮对话后自动生成标题
-      final assistantCount = _messages.where((m) => m.role == _ChatRole.assistant).length;
+      final assistantCount =
+          _messages.where((m) => m.role == _ChatRole.assistant).length;
       if (assistantCount == 1) {
         _generateConversationTitle();
       }
@@ -448,13 +483,17 @@ class _ChatSheetState extends State<ChatSheet> {
 
   Future<void> _generateConversationTitle() async {
     if (_conversationId == null) return;
-    final userMessages = _messages.where((m) => m.role == _ChatRole.user).toList();
+    final userMessages =
+        _messages.where((m) => m.role == _ChatRole.user).toList();
     if (userMessages.isEmpty) return;
     final firstUserMessage = userMessages.first.content.trim();
     if (firstUserMessage.isEmpty) return;
-    final title = firstUserMessage.length > 20 ? '${firstUserMessage.substring(0, 20)}...' : firstUserMessage;
+    final title = firstUserMessage.length > 20
+        ? '${firstUserMessage.substring(0, 20)}...'
+        : firstUserMessage;
     try {
-      await MemCoachNativeBridge.updateConversationTitle(conversationId: _conversationId!, title: title);
+      await MemCoachNativeBridge.updateConversationTitle(
+          conversationId: _conversationId!, title: title);
     } catch (e) {
       // 静默失败
     }
@@ -469,33 +508,32 @@ class _ChatSheetState extends State<ChatSheet> {
     super.dispose();
   }
 
-
   void _handleInputChanged(String text) {
     // 避免自动补全时的递归调用
     if (_isAutoCompleting) return;
-    
+
     // 检测是否输入了斜杠命令
     final trimmed = text.trim();
     final showPanel = trimmed.startsWith('/') && !_running;
-    
+
     if (showPanel != _showSlashCommandPanel) {
       setState(() {
         _showSlashCommandPanel = showPanel;
       });
     }
-    
+
     // @PDF 自动补全
     _handlePdfAutoComplete(text);
   }
-  
+
   /// 处理 @PDF 自动补全
   void _handlePdfAutoComplete(String text) {
     if (text.isEmpty) return;
-    
+
     // 检查是否以 @p 或 @P 结尾（不区分大小写）
     final lowerText = text.toLowerCase();
     if (lowerText.endsWith('@p') && !lowerText.endsWith('@pdf')) {
-      // 自动补全为 @PDF 
+      // 自动补全为 @PDF
       _isAutoCompleting = true;
       final newText = '${text.substring(0, text.length - 2)}@PDF ';
       _controller.text = newText;
@@ -503,11 +541,11 @@ class _ChatSheetState extends State<ChatSheet> {
       _isAutoCompleting = false;
     }
   }
-  
+
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _running) return;
-    
+
     // 检查是否是斜杠命令
     final commandResult = parseSlashCommand(text);
     if (commandResult.isCommand) {
@@ -521,11 +559,10 @@ class _ChatSheetState extends State<ChatSheet> {
         name: text.substring(1).split(' ')[0],
         description: '',
         icon: Icons.terminal_rounded,
-
       ));
       return;
     }
-    
+
     _lastSentText = text;
     final sentAt = DateTime.now();
 
@@ -568,7 +605,6 @@ class _ChatSheetState extends State<ChatSheet> {
         history: history,
         context: widget.pageContext ?? {},
       );
-
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -598,16 +634,17 @@ class _ChatSheetState extends State<ChatSheet> {
   /// 重试上一次发送
   Future<void> _retryLastSend() async {
     if (_lastSentText == null || _lastSentText!.isEmpty || _running) return;
-    
+
     // 将文本放回输入框
     _controller.text = _lastSentText!;
-    _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
-    
+    _controller.selection =
+        TextSelection.collapsed(offset: _controller.text.length);
+
     // 清除失败状态
     setState(() {
       _status = '';
     });
-    
+
     // 重新发送
     await _send();
   }
@@ -655,8 +692,11 @@ class _ChatSheetState extends State<ChatSheet> {
       final pageCount = selected['page_count']?.toString() ?? '?';
       final marker = '请基于 PDF「$name」（document_id: $id，$pageCount 页）回答：';
       setState(() {
-        _controller.text = _controller.text.trim().isEmpty ? marker : '${_controller.text.trim()}\n$marker';
-        _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
+        _controller.text = _controller.text.trim().isEmpty
+            ? marker
+            : '${_controller.text.trim()}\n$marker';
+        _controller.selection =
+            TextSelection.collapsed(offset: _controller.text.length);
         _status = '已引用 PDF：$name';
       });
     } catch (error) {
@@ -684,7 +724,8 @@ class _ChatSheetState extends State<ChatSheet> {
   }
 
   String? _currentThinkingContent() {
-    return _nullableMessageText(_thinkingText == _thinkingPlaceholder ? null : _thinkingText);
+    return _nullableMessageText(
+        _thinkingText == _thinkingPlaceholder ? null : _thinkingText);
   }
 
   String? _nullableMessageText(Object? value) {
@@ -710,14 +751,14 @@ class _ChatSheetState extends State<ChatSheet> {
     for (var i = _messages.length - 1; i >= 0; i--) {
       final message = _messages[i];
       if (message.role == _ChatRole.assistant) {
-        _messages[i] = message.copyWith(toolCalls: List<_ToolCallRecord>.from(_currentTurnToolCalls));
+        _messages[i] = message.copyWith(
+            toolCalls: List<_ToolCallRecord>.from(_currentTurnToolCalls));
         return;
       }
     }
   }
 
   void _scrollToBottom() {
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -749,14 +790,16 @@ class _ChatSheetState extends State<ChatSheet> {
               color: Theme.of(context).brightness == Brightness.dark
                   ? const Color(0xFF1D1D26)
                   : Colors.white,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(28)),
             ),
             child: Column(
               children: [
                 // ── 拖拽指示条 + 头部 ──
                 _buildHeader(context),
                 // ── 状态指示 ──
-                if (_status.isNotEmpty && !_isTransientStatus()) _buildStatusBar(),
+                if (_status.isNotEmpty && !_isTransientStatus())
+                  _buildStatusBar(),
                 // ── 斜杠命令面板 ──
 
                 if (_showSlashCommandPanel) _buildSlashCommandPanel(),
@@ -768,20 +811,27 @@ class _ChatSheetState extends State<ChatSheet> {
                           ? _buildEmptyState()
                           : Builder(
                               builder: (context) {
-                                final showLiveThinking = _isThinking && _thinkingText.trim().isNotEmpty;
-                                final liveThinkingText = _thinkingText.trim().isNotEmpty
-                                    ? _thinkingText
-                                    : _thinkingPlaceholder;
+                                final showLiveThinking = _isThinking &&
+                                    _thinkingText.trim().isNotEmpty;
+                                final liveThinkingText =
+                                    _thinkingText.trim().isNotEmpty
+                                        ? _thinkingText
+                                        : _thinkingPlaceholder;
                                 return ListView.builder(
                                   controller: _scrollController,
-                                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                                  itemCount: _messages.length + (showLiveThinking ? 1 : 0),
+                                  keyboardDismissBehavior:
+                                      ScrollViewKeyboardDismissBehavior.onDrag,
+                                  padding:
+                                      const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                                  itemCount: _messages.length +
+                                      (showLiveThinking ? 1 : 0),
                                   itemBuilder: (context, index) {
                                     // 如果有思考状态，在最后一个位置显示实时思考卡片（默认折叠）
-                                    if (showLiveThinking && index == _messages.length) {
+                                    if (showLiveThinking &&
+                                        index == _messages.length) {
                                       return Padding(
-                                        padding: const EdgeInsets.only(top: 8, bottom: 24),
+                                        padding: const EdgeInsets.only(
+                                            top: 8, bottom: 24),
                                         child: DeepThinkingCard(
                                           thinkingText: liveThinkingText,
                                           isLoading: _isThinking,
@@ -793,17 +843,26 @@ class _ChatSheetState extends State<ChatSheet> {
                                         ),
                                       );
                                     }
-                                    
+
                                     final message = _messages[index];
                                     if (message.role == _ChatRole.tool) {
                                       return const SizedBox.shrink();
                                     }
                                     if (message.role == _ChatRole.toolChip) {
-                                      final durationMs = int.tryParse(message.toolCallId ?? '');
                                       return ToolCallChip(
                                         toolName: message.content,
-                                        duration: durationMs != null ? Duration(milliseconds: durationMs) : null,
-                                        isRunning: durationMs == null,
+                                        arguments: message.toolArguments,
+                                        result: message.toolResult,
+                                        error: message.toolError,
+                                        duration: message.toolDurationMs != null
+                                            ? Duration(
+                                                milliseconds:
+                                                    message.toolDurationMs!)
+                                            : null,
+                                        isRunning:
+                                            message.toolDurationMs == null &&
+                                                message.toolResult == null &&
+                                                message.toolError == null,
                                       );
                                     }
                                     return _buildMessageItem(message);
@@ -822,7 +881,6 @@ class _ChatSheetState extends State<ChatSheet> {
     );
   }
 
-
   Widget _buildHeader(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
@@ -834,7 +892,9 @@ class _ChatSheetState extends State<ChatSheet> {
             onPressed: _running ? null : _showConversationHistorySheet,
             icon: const Icon(Icons.history_rounded),
             style: IconButton.styleFrom(
-              backgroundColor: isDark ? Colors.white.withOpacity(0.06) : Colors.grey.withOpacity(0.1),
+              backgroundColor: isDark
+                  ? Colors.white.withOpacity(0.06)
+                  : Colors.grey.withOpacity(0.1),
               foregroundColor: isDark ? Colors.white70 : Colors.black87,
             ),
           ),
@@ -844,7 +904,9 @@ class _ChatSheetState extends State<ChatSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.15),
+                  color: isDark
+                      ? Colors.white.withOpacity(0.2)
+                      : Colors.black.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -855,7 +917,9 @@ class _ChatSheetState extends State<ChatSheet> {
             onPressed: () => Navigator.of(context).pop(),
             icon: const Icon(Icons.close_rounded),
             style: IconButton.styleFrom(
-              backgroundColor: isDark ? Colors.white.withOpacity(0.06) : Colors.grey.withOpacity(0.1),
+              backgroundColor: isDark
+                  ? Colors.white.withOpacity(0.06)
+                  : Colors.grey.withOpacity(0.1),
               foregroundColor: isDark ? Colors.white70 : Colors.black87,
             ),
           ),
@@ -879,7 +943,8 @@ class _ChatSheetState extends State<ChatSheet> {
           formatTimestamp: _formatHistoryTimestamp,
         ),
       );
-      if (selectedId == null || !mounted || selectedId == _conversationId) return;
+      if (selectedId == null || !mounted || selectedId == _conversationId)
+        return;
       await _loadConversation(selectedId);
     } catch (error) {
       if (!mounted) return;
@@ -901,16 +966,19 @@ class _ChatSheetState extends State<ChatSheet> {
     if (time == null) return value;
     final local = time.toLocal();
     final now = DateTime.now();
-    final isToday = local.year == now.year && local.month == now.month && local.day == now.day;
+    final isToday = local.year == now.year &&
+        local.month == now.month &&
+        local.day == now.day;
     final minute = local.minute.toString().padLeft(2, '0');
     if (isToday) return '今天 ${local.hour}:$minute';
     return '${local.month}/${local.day} ${local.hour}:$minute';
   }
 
   Widget _buildMessageItem(_ChatMessage message) {
-    final hasToolCalls = message.role == _ChatRole.assistant && message.toolCalls.isNotEmpty;
+    final hasToolCalls =
+        message.role == _ChatRole.assistant && message.toolCalls.isNotEmpty;
     final reasoningContent = _nullableMessageText(message.reasoningContent);
-    
+
     // 只渲染消息本身，不显示工具调用和 reasoning
     // 工具调用已通过 ToolActivityBar 统一展示，避免重复
     return MarkdownBubble(message: message);
@@ -940,7 +1008,9 @@ class _ChatSheetState extends State<ChatSheet> {
               style: TextStyle(
                 color: isFailure
                     ? Colors.red.shade700
-                    : (Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54),
+                    : (Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white70
+                        : Colors.black54),
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -952,7 +1022,8 @@ class _ChatSheetState extends State<ChatSheet> {
               child: TextButton(
                 onPressed: _retryLastSend,
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
@@ -966,7 +1037,7 @@ class _ChatSheetState extends State<ChatSheet> {
       ),
     );
   }
-  
+
   Widget _buildToolActivityBar() {
     return ToolActivityBar(
       toolActivities: _toolActivities,
@@ -988,14 +1059,13 @@ class _ChatSheetState extends State<ChatSheet> {
   }
 
   Widget _buildSlashCommandPanel() {
-
     return SlashCommandPanel(
       inputText: _controller.text,
       visible: _showSlashCommandPanel,
       onCommandSelected: _handleSlashCommand,
     );
   }
-  
+
   Future<void> _showQuickCommandSheet() async {
     final command = await showModalBottomSheet<SlashCommand>(
       context: context,
@@ -1027,7 +1097,7 @@ class _ChatSheetState extends State<ChatSheet> {
       _showSlashCommandPanel = false;
       _controller.clear();
     });
-    
+
     // 执行命令
 
     switch (command.type) {
@@ -1048,7 +1118,7 @@ class _ChatSheetState extends State<ChatSheet> {
         break;
     }
   }
-  
+
   Future<void> _executeCompactCommand() async {
     setState(() {
       _messages.add(const _ChatMessage(
@@ -1087,11 +1157,9 @@ class _ChatSheetState extends State<ChatSheet> {
     }
   }
 
-  
   void _executeEffortCommand() {
     // 显示思考强度选择对话框
     showDialog<void>(
-
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('设置思考强度'),
@@ -1101,21 +1169,22 @@ class _ChatSheetState extends State<ChatSheet> {
             _buildEffortOption('低', '快速回答，较少思考', 'low'),
             _buildEffortOption('中', '平衡思考深度和速度', 'medium'),
             _buildEffortOption('高', '深度思考，更详细的分析', 'high'),
-
           ],
         ),
       ),
     );
   }
-  
-  Widget _buildEffortOption(String level, String description, String nativeLevel) {
+
+  Widget _buildEffortOption(
+      String level, String description, String nativeLevel) {
     return ListTile(
       title: Text(level),
       subtitle: Text(description),
       onTap: () async {
         Navigator.of(context).pop();
         try {
-          final result = await MemCoachNativeBridge.setReasoningEffort(nativeLevel);
+          final result =
+              await MemCoachNativeBridge.setReasoningEffort(nativeLevel);
           if (!mounted) return;
           final label = result['label']?.toString() ?? level;
           setState(() {
@@ -1138,39 +1207,36 @@ class _ChatSheetState extends State<ChatSheet> {
     );
   }
 
-  
   List<Map<String, dynamic>> _messagesForNativeHistory() {
-    return _messages
-        .where((message) {
-          if (message.role == _ChatRole.system) return false;
-          // 核心修复：强制保留所有工具结果消息，即使内容为空
-          if (message.role == _ChatRole.tool) return true;
-          // 保留有内容的消息
-          if (message.content.trim().isNotEmpty) return true;
-          // 保留：带有工具调用的助手消息（即使内容为空，ReAct 协议也必须保留它）
-          if (message.role == _ChatRole.assistant && message.toolCalls.isNotEmpty) return true;
-          return false;
-        })
-        .map((message) {
-          final role = switch (message.role) {
-            _ChatRole.user => 'user',
-            _ChatRole.assistant => 'assistant',
-            _ChatRole.tool => 'tool',
-            _ChatRole.system => 'system',
-            _ChatRole.toolChip => 'system',
-          };
-          return <String, dynamic>{
-            'role': role,
-            'content': message.content,
-            if (message.reasoningContent != null) 'reasoning_content': message.reasoningContent,
-            if (message.toolCallId != null) 'tool_call_id': message.toolCallId,
-            if (message.toolCalls.isNotEmpty)
-              'tool_calls': message.toolCalls.map((call) => call.toJson()).toList(),
-          };
-        })
-        .toList();
+    return _messages.where((message) {
+      if (message.role == _ChatRole.system) return false;
+      // 核心修复：强制保留所有工具结果消息，即使内容为空
+      if (message.role == _ChatRole.tool) return true;
+      // 保留有内容的消息
+      if (message.content.trim().isNotEmpty) return true;
+      // 保留：带有工具调用的助手消息（即使内容为空，ReAct 协议也必须保留它）
+      if (message.role == _ChatRole.assistant && message.toolCalls.isNotEmpty)
+        return true;
+      return false;
+    }).map((message) {
+      final role = switch (message.role) {
+        _ChatRole.user => 'user',
+        _ChatRole.assistant => 'assistant',
+        _ChatRole.tool => 'tool',
+        _ChatRole.system => 'system',
+        _ChatRole.toolChip => 'system',
+      };
+      return <String, dynamic>{
+        'role': role,
+        'content': message.content,
+        if (message.reasoningContent != null)
+          'reasoning_content': message.reasoningContent,
+        if (message.toolCallId != null) 'tool_call_id': message.toolCallId,
+        if (message.toolCalls.isNotEmpty)
+          'tool_calls': message.toolCalls.map((call) => call.toJson()).toList(),
+      };
+    }).toList();
   }
-
 
   String _effortLabel(String effort) {
     switch (effort.toLowerCase()) {
@@ -1184,7 +1250,6 @@ class _ChatSheetState extends State<ChatSheet> {
   }
 
   void _executeHelpCommand() {
-
     // 显示帮助信息
     _messages.add(const _ChatMessage(
       role: _ChatRole.system,
@@ -1197,7 +1262,7 @@ class _ChatSheetState extends State<ChatSheet> {
     ));
     setState(() {});
   }
-  
+
   void _executeClearCommand() {
     setState(() {
       _messages
@@ -1211,7 +1276,7 @@ class _ChatSheetState extends State<ChatSheet> {
       _isThinking = false;
     });
   }
-  
+
   Future<void> _executeExportCommand() async {
     final buffer = StringBuffer();
     for (final msg in _messages.where((msg) => msg.role != _ChatRole.tool)) {
@@ -1227,7 +1292,8 @@ class _ChatSheetState extends State<ChatSheet> {
             .where((name) => name.isNotEmpty)
             .toSet()
             .join('、');
-        final toolSummary = toolNames.isEmpty ? '${msg.toolCalls.length} 次' : toolNames;
+        final toolSummary =
+            toolNames.isEmpty ? '${msg.toolCalls.length} 次' : toolNames;
         buffer.writeln('[工具调用]: $toolSummary');
       }
       buffer.writeln();
@@ -1242,7 +1308,6 @@ class _ChatSheetState extends State<ChatSheet> {
       ));
     });
   }
-
 
   Widget _buildEmptyState() {
     return Center(
@@ -1274,7 +1339,7 @@ class _ChatSheetState extends State<ChatSheet> {
       ),
     );
   }
-  
+
   Widget _buildLoadingState() {
     return Center(
       child: Column(
@@ -1307,7 +1372,9 @@ class _ChatSheetState extends State<ChatSheet> {
         color: isDark ? const Color(0xFF1D1D26) : Colors.white,
         border: Border(
           top: BorderSide(
-            color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06),
+            color: isDark
+                ? Colors.white.withOpacity(0.06)
+                : Colors.black.withOpacity(0.06),
           ),
         ),
       ),
@@ -1324,7 +1391,9 @@ class _ChatSheetState extends State<ChatSheet> {
                   onPressed: _running ? null : _showQuickCommandSheet,
                   icon: const Icon(Icons.bolt_rounded),
                   style: IconButton.styleFrom(
-                    backgroundColor: isDark ? Colors.white.withOpacity(0.06) : Colors.grey.withOpacity(0.1),
+                    backgroundColor: isDark
+                        ? Colors.white.withOpacity(0.06)
+                        : Colors.grey.withOpacity(0.1),
                     foregroundColor: isDark ? Colors.white70 : Colors.black87,
                   ),
                 ),
@@ -1334,7 +1403,9 @@ class _ChatSheetState extends State<ChatSheet> {
                   onPressed: _running ? null : _onVoiceInput,
                   icon: const Icon(Icons.mic_rounded),
                   style: IconButton.styleFrom(
-                    backgroundColor: isDark ? Colors.white.withOpacity(0.06) : Colors.grey.withOpacity(0.1),
+                    backgroundColor: isDark
+                        ? Colors.white.withOpacity(0.06)
+                        : Colors.grey.withOpacity(0.1),
                     foregroundColor: isDark ? Colors.white70 : Colors.black87,
                   ),
                 ),
@@ -1349,7 +1420,9 @@ class _ChatSheetState extends State<ChatSheet> {
                 child: Container(
                   constraints: const BoxConstraints(maxHeight: 120),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF252530) : const Color(0xFFF4F6FA),
+                    color: isDark
+                        ? const Color(0xFF252530)
+                        : const Color(0xFFF4F6FA),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: TextField(
@@ -1364,10 +1437,14 @@ class _ChatSheetState extends State<ChatSheet> {
                     decoration: InputDecoration(
                       hintText: '输入消息...',
                       hintStyle: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.4),
                       ),
                       border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
                     ),
                     onChanged: _handleInputChanged,
                     onSubmitted: (_) => _send(),
@@ -1407,11 +1484,13 @@ class _PdfDocumentSheet extends StatelessWidget {
           final year = document['year']?.toString();
           final meta = [
             '$pageCount 页',
-            if (subject != null && subject.isNotEmpty && subject != 'null') subject,
+            if (subject != null && subject.isNotEmpty && subject != 'null')
+              subject,
             if (year != null && year.isNotEmpty && year != 'null') year,
           ].join(' · ');
           return ListTile(
-            leading: const CircleAvatar(child: Icon(Icons.picture_as_pdf_rounded)),
+            leading:
+                const CircleAvatar(child: Icon(Icons.picture_as_pdf_rounded)),
             title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text(meta),
             onTap: () => Navigator.of(context).pop(document),
@@ -1444,11 +1523,15 @@ class _ConversationHistorySheet extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.history_toggle_off_rounded, size: 42, color: Colors.black.withOpacity(0.25)),
+                  Icon(Icons.history_toggle_off_rounded,
+                      size: 42, color: Colors.black.withOpacity(0.25)),
                   const SizedBox(height: 12),
-                  const Text('暂无历史会话', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  const Text('暂无历史会话',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 6),
-                  const Text('开始一次对话后，会在这里显示历史记录。', style: TextStyle(color: Colors.black54)),
+                  const Text('开始一次对话后，会在这里显示历史记录。',
+                      style: TextStyle(color: Colors.black54)),
                 ],
               ),
             )
@@ -1460,34 +1543,51 @@ class _ConversationHistorySheet extends StatelessWidget {
                 final id = int.tryParse(conversation['id']?.toString() ?? '');
                 final title = conversation['title']?.toString().trim();
                 final summary = conversation['summary']?.toString().trim();
-                final messageCount = conversation['message_count']?.toString() ?? '0';
+                final messageCount =
+                    conversation['message_count']?.toString() ?? '0';
                 final updatedAt = formatTimestamp(conversation['updated_at']);
                 final isCurrent = id != null && id == currentConversationId;
                 final subtitle = [
-                  if (summary != null && summary.isNotEmpty && summary != 'null') summary,
+                  if (summary != null &&
+                      summary.isNotEmpty &&
+                      summary != 'null')
+                    summary,
                   '$messageCount 条消息',
                   if (updatedAt.isNotEmpty) updatedAt,
                 ].join(' · ');
 
                 return ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: isCurrent ? const Color(0xFF5B5FEF) : const Color(0xFFF4F6FA),
+                    backgroundColor: isCurrent
+                        ? const Color(0xFF5B5FEF)
+                        : const Color(0xFFF4F6FA),
                     child: Icon(
-                      isCurrent ? Icons.chat_bubble_rounded : Icons.chat_bubble_outline_rounded,
+                      isCurrent
+                          ? Icons.chat_bubble_rounded
+                          : Icons.chat_bubble_outline_rounded,
                       color: isCurrent ? Colors.white : const Color(0xFF5B5FEF),
                     ),
                   ),
                   title: Text(
-                    title == null || title.isEmpty || title == 'null' ? '未命名会话' : title,
+                    title == null || title.isEmpty || title == 'null'
+                        ? '未命名会话'
+                        : title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600),
+                    style: TextStyle(
+                        fontWeight:
+                            isCurrent ? FontWeight.w800 : FontWeight.w600),
                   ),
-                  subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(subtitle,
+                      maxLines: 2, overflow: TextOverflow.ellipsis),
                   trailing: isCurrent
-                      ? const Text('当前', style: TextStyle(color: Color(0xFF5B5FEF), fontWeight: FontWeight.w700))
+                      ? const Text('当前',
+                          style: TextStyle(
+                              color: Color(0xFF5B5FEF),
+                              fontWeight: FontWeight.w700))
                       : const Icon(Icons.chevron_right_rounded),
-                  onTap: id == null ? null : () => Navigator.of(context).pop(id),
+                  onTap:
+                      id == null ? null : () => Navigator.of(context).pop(id),
                 );
               },
               separatorBuilder: (_, __) => const Divider(height: 1),
@@ -1499,7 +1599,6 @@ class _ConversationHistorySheet extends StatelessWidget {
 
 /// 聊天消息角色
 enum _ChatRole { user, assistant, tool, system, toolChip }
-
 
 class _ToolCallRecord {
   const _ToolCallRecord({
@@ -1527,7 +1626,6 @@ class _ToolCallRecord {
       };
 }
 
-
 /// 聊天消息数据
 class _ChatMessage {
   const _ChatMessage({
@@ -1536,6 +1634,10 @@ class _ChatMessage {
     this.reasoningContent,
     this.timestamp,
     this.toolCallId,
+    this.toolArguments,
+    this.toolResult,
+    this.toolError,
+    this.toolDurationMs,
     this.toolCalls = const [],
   });
 
@@ -1544,6 +1646,10 @@ class _ChatMessage {
   final String? reasoningContent;
   final DateTime? timestamp;
   final String? toolCallId;
+  final String? toolArguments;
+  final String? toolResult;
+  final String? toolError;
+  final int? toolDurationMs;
   final List<_ToolCallRecord> toolCalls;
 
   _ChatMessage copyWith({
@@ -1551,6 +1657,10 @@ class _ChatMessage {
     String? reasoningContent,
     DateTime? timestamp,
     String? toolCallId,
+    String? toolArguments,
+    String? toolResult,
+    String? toolError,
+    int? toolDurationMs,
     List<_ToolCallRecord>? toolCalls,
   }) {
     return _ChatMessage(
@@ -1559,8 +1669,11 @@ class _ChatMessage {
       reasoningContent: reasoningContent ?? this.reasoningContent,
       timestamp: timestamp ?? this.timestamp,
       toolCallId: toolCallId ?? this.toolCallId,
+      toolArguments: toolArguments ?? this.toolArguments,
+      toolResult: toolResult ?? this.toolResult,
+      toolError: toolError ?? this.toolError,
+      toolDurationMs: toolDurationMs ?? this.toolDurationMs,
       toolCalls: toolCalls ?? this.toolCalls,
     );
   }
 }
-
