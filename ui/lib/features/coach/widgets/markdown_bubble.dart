@@ -193,7 +193,6 @@ class MarkdownBubble extends StatelessWidget {
         child: MarkdownMathView(
           data: content,
           baseFontSize: 15,
-          mathColor: Theme.of(context).colorScheme.primary,
         ),
       ),
     );

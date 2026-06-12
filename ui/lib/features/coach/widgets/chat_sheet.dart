@@ -385,6 +385,9 @@ class _ChatSheetState extends State<ChatSheet> {
           break;
         case 'chat_message':
           _status = 'Agent 正在回复...';
+          _isThinking = false;
+          _thinkingStage = 3;
+          _thinkingEndTime ??= DateTime.now().millisecondsSinceEpoch;
           _appendAssistantContent(event.content ?? '');
           if (event.isFinal) {
             _attachCurrentToolCallsToLastAssistantMessage();
@@ -1617,7 +1620,8 @@ class _ConversationHistorySheet extends StatelessWidget {
                           TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 6),
                   Text('开始一次对话后，会在这里显示历史记录。',
-                      style: TextStyle(color: isDark ? Colors.white54 : Colors.black54)),
+                      style: TextStyle(
+                          color: isDark ? Colors.white54 : Colors.black54)),
                 ],
               ),
             )

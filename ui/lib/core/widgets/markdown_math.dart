@@ -72,7 +72,7 @@ class MarkdownMathView extends StatelessWidget {
     final effectiveTextColor =
         textColor ?? (isDark ? const Color(0xFFE5E5E7) : Colors.black87);
     final effectiveMathColor =
-        mathColor ?? Theme.of(context).colorScheme.primary;
+        mathColor ?? effectiveTextColor;
     final effectiveStyleSheet = styleSheet ??
         examMarkdownStyleSheet(context,
             baseFontSize: baseFontSize, textColor: effectiveTextColor);
@@ -194,9 +194,9 @@ MarkdownStyleSheet examMarkdownStyleSheet(
       height: 1.35,
     ),
     h3: TextStyle(
-      color: colorScheme.primary,
+      color: foreground,
       fontSize: baseFontSize + 2,
-      fontWeight: FontWeight.w900,
+      fontWeight: FontWeight.bold,
       height: 1.45,
     ),
     h4: TextStyle(
@@ -647,6 +647,7 @@ class _EncodedMathBuilder extends MarkdownElementBuilder {
         color: color,
         fontSize: display ? baseFontSize + 1 : baseFontSize,
         height: 1.25,
+        fontWeight: FontWeight.normal, // 强制学术符号使用常规字重，防止跟随标题等加粗
       ),
       mathStyle: display ? MathStyle.display : MathStyle.text,
       onErrorFallback: (error) {
@@ -655,6 +656,7 @@ class _EncodedMathBuilder extends MarkdownElementBuilder {
           style: (preferredStyle ?? TextStyle(fontSize: baseFontSize)).copyWith(
             color: fallbackColor,
             fontStyle: FontStyle.italic,
+            fontWeight: FontWeight.normal, // 同样强制使用常规字重
           ),
         );
       },

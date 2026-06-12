@@ -213,7 +213,8 @@ class _QuestionCardState extends State<QuestionCard> {
           if (headerText.isNotEmpty)
             Text(headerText,
                 style: TextStyle(
-                    color: isDark ? Colors.white54 : Colors.black54, fontWeight: FontWeight.w700)),
+                    color: isDark ? Colors.white54 : Colors.black54,
+                    fontWeight: FontWeight.w700)),
           const SizedBox(height: 14),
 
           // 题干
@@ -221,14 +222,15 @@ class _QuestionCardState extends State<QuestionCard> {
             data: q.stem,
             selectable: false,
             baseFontSize: 17,
-            mathColor: Theme.of(context).colorScheme.primary,
             styleSheet:
                 examMarkdownStyleSheet(context, baseFontSize: 17).copyWith(
               p: TextStyle(
                 fontSize: 17,
                 height: 1.5,
                 fontWeight: FontWeight.w700,
-                color: isDark ? Colors.white87 : Colors.black87,
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.87)
+                    : Colors.black87,
               ),
             ),
           ),
@@ -247,18 +249,22 @@ class _QuestionCardState extends State<QuestionCard> {
             Color borderColor;
             if (submitted) {
               if (isCorrectAnswer) {
-                bgColor = const Color(0xFF20B486).withOpacity(0.1);
+                bgColor = const Color(0xFF20B486).withValues(alpha: 0.1);
                 borderColor = const Color(0xFF20B486);
               } else if (isWrongSelection) {
-                bgColor = Colors.red.withOpacity(0.1);
+                bgColor = Colors.red.withValues(alpha: 0.1);
                 borderColor = Colors.red;
               } else {
-                bgColor = isDark ? const Color(0xFF23232C) : Colors.grey.shade50;
+                bgColor =
+                    isDark ? const Color(0xFF23232C) : Colors.grey.shade50;
                 borderColor = Colors.transparent;
               }
             } else {
               bgColor = active
-                  ? Theme.of(context).colorScheme.primary.withOpacity(0.08)
+                  ? Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.08)
                   : (isDark ? const Color(0xFF23232C) : Colors.grey.shade50);
               borderColor = active
                   ? Theme.of(context).colorScheme.primary
@@ -289,7 +295,6 @@ class _QuestionCardState extends State<QuestionCard> {
                           data: entry.value,
                           selectable: false,
                           baseFontSize: 14.5,
-                          mathColor: Theme.of(context).colorScheme.primary,
                           styleSheet: examMarkdownStyleSheet(
                             context,
                             baseFontSize: 14.5,
@@ -299,7 +304,9 @@ class _QuestionCardState extends State<QuestionCard> {
                               height: 1.45,
                               fontWeight:
                                   active ? FontWeight.w800 : FontWeight.w500,
-                              color: isDark ? Colors.white87 : Colors.black87,
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.87)
+                                  : Colors.black87,
                             ),
                           ),
                         ),
@@ -324,8 +331,8 @@ class _QuestionCardState extends State<QuestionCard> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: result!.correct
-                    ? const Color(0xFF20B486).withOpacity(0.1)
-                    : Colors.orange.withOpacity(0.1),
+                    ? const Color(0xFF20B486).withValues(alpha: 0.1)
+                    : Colors.orange.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -348,7 +355,6 @@ class _QuestionCardState extends State<QuestionCard> {
                       data: result!.explanation!,
                       selectable: false,
                       baseFontSize: 14,
-                      mathColor: Theme.of(context).colorScheme.primary,
                       styleSheet: examMarkdownStyleSheet(
                         context,
                         baseFontSize: 14,
@@ -356,7 +362,9 @@ class _QuestionCardState extends State<QuestionCard> {
                         p: TextStyle(
                           fontSize: 14,
                           height: 1.4,
-                          color: isDark ? Colors.white87 : Colors.black87,
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.87)
+                              : Colors.black87,
                         ),
                       ),
                     ),
@@ -365,7 +373,8 @@ class _QuestionCardState extends State<QuestionCard> {
                     const SizedBox(height: 6),
                     Text('掌握度：${result!.masteryLevel}',
                         style: TextStyle(
-                            color: isDark ? Colors.white54 : Colors.black54, fontSize: 12)),
+                            color: isDark ? Colors.white54 : Colors.black54,
+                            fontSize: 12)),
                   ],
                 ],
               ),

@@ -35,6 +35,7 @@ class KnowledgeNoteData {
 
 /// 回调：保存笔记
 typedef OnSaveNote = void Function(KnowledgeNoteData data);
+
 /// 回调：查看变式
 typedef OnViewVariations = void Function(String noteId);
 
@@ -53,19 +54,22 @@ class KnowledgeNoteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final d = data ?? const KnowledgeNoteData(
-      id: 'demo',
-      title: '否定后件式 · 知识笔记',
-      definition: 'A → B，¬B，因此 ¬A。',
-      errorPoints: '容易把「否定后件」和「否定前件」混淆。否定前件不能推出确定结论。',
-      relatedQuestions: '2023 年第 12 题 · 2021 年第 8 题（你做错过）',
-    );
+    final d = data ??
+        const KnowledgeNoteData(
+          id: 'demo',
+          title: '否定后件式 · 知识笔记',
+          definition: 'A → B，¬B，因此 ¬A。',
+          errorPoints: '容易把「否定后件」和「否定前件」混淆。否定前件不能推出确定结论。',
+          relatedQuestions: '2023 年第 12 题 · 2021 年第 8 题（你做错过）',
+        );
 
     return CoachShellCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(d.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          Text(d.title,
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
           if (d.topic != null && d.topic!.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(d.topic!,
@@ -173,7 +177,9 @@ class _Section extends StatelessWidget {
           Text(content,
               style: TextStyle(
                   height: 1.45,
-                  color: isDark ? Colors.white87 : Colors.black87)),
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.87)
+                      : Colors.black87)),
         ],
       ),
     );

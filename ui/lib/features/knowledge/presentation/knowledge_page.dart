@@ -977,7 +977,6 @@ class _KnowledgeNodeDetailPageState extends State<KnowledgeNodeDetailPage> {
                 data: content.isNotEmpty ? content : description,
                 selectable: true,
                 baseFontSize: 15,
-                mathColor: Theme.of(context).colorScheme.primary,
               ),
             ],
           );

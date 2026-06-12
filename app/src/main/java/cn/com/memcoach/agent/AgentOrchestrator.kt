@@ -253,8 +253,11 @@ class AgentOrchestrator(
                     taskDescription = input.userMessage,
                     onChunk = { chunk ->
                         accumulator.accumulate(chunk)
-                        if (chunk.content != null) {
-                            send(AgentEvent.ThinkingUpdate(chunk.content))
+                        if (!chunk.reasoningContent.isNullOrBlank()) {
+                            send(AgentEvent.ThinkingUpdate(chunk.reasoningContent))
+                        }
+                        if (!chunk.content.isNullOrBlank()) {
+                            send(AgentEvent.ChatMessage(accumulator.content, isFinal = false))
                         }
                     }
                 )
@@ -264,8 +267,11 @@ class AgentOrchestrator(
                     tools = toolDefinitions,
                     onChunk = { chunk ->
                         accumulator.accumulate(chunk)
-                        if (chunk.content != null) {
-                            send(AgentEvent.ThinkingUpdate(chunk.content))
+                        if (!chunk.reasoningContent.isNullOrBlank()) {
+                            send(AgentEvent.ThinkingUpdate(chunk.reasoningContent))
+                        }
+                        if (!chunk.content.isNullOrBlank()) {
+                            send(AgentEvent.ChatMessage(accumulator.content, isFinal = false))
                         }
                     }
                 )
