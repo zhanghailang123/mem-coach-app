@@ -6,7 +6,7 @@ import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:markdown/markdown.dart' as md;
 
 const _latexCommandPattern =
-    r'(frac|sqrt|angle|triangle|Delta|theta|pi|times|cdot|circ|text|left|right|begin|end|sum|int|le|leq|ge|geq|neq|ne|infty|overline|overrightarrow|vec|bar|sin|cos|tan|log|ln|max|min|pm|mp|approx|alpha|beta|gamma|sigma|lambda|mu|rho|varphi|phi|frown|overset|rightarrow|Rightarrow|leftrightarrow|Leftrightarrow|xrightarrow|implies|to|neg|not|land|lor|wedge|vee|cap|cup|in|notin|subseteq|forall|exists|emptyset|perp|equiv|sim|iff|vdash|pmod|quad|cdot|cdots|dots|ldots|div|underbrace|oplus|lbrace|rbrace|hline)';
+    r'(frac|dfrac|tfrac|sqrt|angle|triangle|Delta|theta|vartheta|pi|times|cdot|circ|degree|text|mathrm|operatorname|left|right|langle|rangle|begin|end|sum|prod|int|lim|partial|nabla|le|leq|ge|geq|neq|ne|infty|overline|underline|overbrace|overrightarrow|vec|bar|hat|tilde|dot|ddot|sin|cos|tan|cot|sec|csc|arcsin|arccos|arctan|log|ln|max|min|pm|mp|approx|alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|iota|kappa|lambda|mu|nu|xi|rho|varrho|sigma|tau|upsilon|varphi|phi|chi|psi|omega|frown|overset|rightarrow|Rightarrow|longrightarrow|Longrightarrow|leftarrow|Leftarrow|leftrightarrow|Leftrightarrow|mapsto|xrightarrow|implies|to|neg|not|land|lor|wedge|vee|cap|cup|in|notin|subseteq|subset|supseteq|supset|forall|exists|emptyset|varnothing|perp|parallel|equiv|sim|simeq|cong|iff|vdash|therefore|because|pmod|mod|quad|qquad|cdots|dots|ldots|div|underbrace|oplus|lbrace|rbrace|hline|displaystyle|textstyle|scriptstyle|scriptscriptstyle)';
 
 final _latexCommandRe = RegExp(r'\\' + _latexCommandPattern + r'\b');
 final _mathOperatorRe = RegExp(r'[=<>^_{}|+*/]');
@@ -24,6 +24,9 @@ final _softWrapProtectedMarkdownSegmentRe = RegExp(
 final _longUnbrokenAsciiRunRe =
     RegExp(r'[A-Za-z0-9][A-Za-z0-9._:/?&=%+#,\-]{27,}');
 final _markdownLinkOrImageRe = RegExp(r'(!?)\[([^\]\n]*)\]\(([^)]+)\)');
+const _mobileMarkdownTableBreakpoint = 560.0;
+const _greekIdentifierPattern =
+    r'(alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|vartheta|iota|kappa|lambda|mu|nu|xi|pi|rho|varrho|sigma|tau|upsilon|phi|varphi|chi|psi|omega)';
 final _bareLatexEnvironmentRe = RegExp(
   r'(^|\n)([ \t]*)(\\begin\{([A-Za-z*]+)\}[\s\S]*?\\end\{[A-Za-z*]+\})([ \t]*)(?=\n|$)',
 );
@@ -76,13 +79,17 @@ class MarkdownMathView extends StatelessWidget {
         examMarkdownStyleSheet(context,
             baseFontSize: baseFontSize, textColor: effectiveTextColor);
 
-    final preparedData = _softWrapMarkdownText(prepareMarkdownMath(data));
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final availableWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.of(context).size.width;
+        final preparedData = _softWrapMarkdownText(
+          prepareMarkdownMath(
+            data,
+            compactTables: availableWidth < _mobileMarkdownTableBreakpoint,
+          ),
+        );
 
         return SizedBox(
           width: availableWidth,
@@ -100,12 +107,14 @@ class MarkdownMathView extends StatelessWidget {
                 color: effectiveMathColor,
                 fallbackColor: effectiveTextColor,
                 baseFontSize: baseFontSize,
+                maxInlineWidth: (availableWidth - 8).clamp(120, 520).toDouble(),
               ),
               'math-block': _EncodedMathBuilder(
                 display: true,
                 color: effectiveMathColor,
                 fallbackColor: effectiveTextColor,
                 baseFontSize: baseFontSize,
+                maxInlineWidth: (availableWidth - 8).clamp(120, 520).toDouble(),
                 backgroundColor: blockMathBackground ??
                     effectiveMathColor.withValues(alpha: 0.06),
                 borderColor: blockMathBorderColor ??
@@ -320,22 +329,26 @@ InlineSpan _previewMathSpan(
   TextStyle textStyle,
   Color mathColor,
 ) {
+  final normalizedFormula = _normalizeLatexFormula(formula);
   final fontSize = textStyle.fontSize ?? 14;
   return WidgetSpan(
     alignment: PlaceholderAlignment.middle,
-    child: Math.tex(
-      formula,
-      mathStyle: MathStyle.text,
-      textStyle: textStyle.copyWith(
-        color: mathColor,
-        fontSize: fontSize,
-        height: 1.2,
-      ),
-      onErrorFallback: (_) => Text(
-        formula,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: textStyle.copyWith(color: mathColor),
+    child: _InlineMathBox(
+      maxWidth: 220,
+      child: Math.tex(
+        normalizedFormula,
+        mathStyle: MathStyle.text,
+        textStyle: textStyle.copyWith(
+          color: mathColor,
+          fontSize: fontSize,
+          height: 1.2,
+        ),
+        onErrorFallback: (_) => Text(
+          _softWrapFormulaText(normalizedFormula),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: textStyle.copyWith(color: mathColor),
+        ),
       ),
     ),
   );
@@ -359,8 +372,14 @@ String _cleanPreviewText(String text) {
   return output;
 }
 
-String prepareMarkdownMath(String input) {
-  final text = normalizeMarkdownMath(input);
+String prepareMarkdownMath(String input, {bool compactTables = false}) {
+  var text = normalizeMarkdownMath(input);
+  text = _encodeMarkdownMathOutsideCodeBlocks(text);
+  if (compactTables) text = _compactMarkdownTables(text);
+  return text;
+}
+
+String _encodeMarkdownMathOutsideCodeBlocks(String text) {
   final buffer = StringBuffer();
   var lastIndex = 0;
 
@@ -372,6 +391,150 @@ String prepareMarkdownMath(String input) {
 
   buffer.write(_encodeMathSegments(text.substring(lastIndex)));
   return buffer.toString();
+}
+
+String _compactMarkdownTables(String text) {
+  final buffer = StringBuffer();
+  var lastIndex = 0;
+
+  for (final match in _fencedCodeBlockRe.allMatches(text)) {
+    buffer.write(_compactMarkdownTablesInPlainText(
+      text.substring(lastIndex, match.start),
+    ));
+    buffer.write(match.group(0));
+    lastIndex = match.end;
+  }
+
+  buffer.write(_compactMarkdownTablesInPlainText(text.substring(lastIndex)));
+  return buffer.toString();
+}
+
+String _compactMarkdownTablesInPlainText(String text) {
+  final lines = text.split('\n');
+  final output = <String>[];
+  var index = 0;
+
+  while (index < lines.length) {
+    if (index + 1 < lines.length &&
+        _isMarkdownTableRow(lines[index]) &&
+        _isMarkdownTableSeparator(lines[index + 1])) {
+      final tableLines = <String>[lines[index], lines[index + 1]];
+      index += 2;
+      while (index < lines.length && _isMarkdownTableRow(lines[index])) {
+        tableLines.add(lines[index]);
+        index += 1;
+      }
+
+      final compacted = _markdownTableToMobileBlocks(tableLines);
+      if (compacted != null) {
+        if (output.isNotEmpty && output.last.trim().isNotEmpty) {
+          output.add('');
+        }
+        output.addAll(compacted.split('\n'));
+        if (index < lines.length && lines[index].trim().isNotEmpty) {
+          output.add('');
+        }
+        continue;
+      }
+
+      output.addAll(tableLines);
+      continue;
+    }
+
+    output.add(lines[index]);
+    index += 1;
+  }
+
+  return output.join('\n');
+}
+
+bool _isMarkdownTableRow(String line) {
+  final trimmed = line.trim();
+  if (trimmed.isEmpty ||
+      trimmed.startsWith('```') ||
+      trimmed.startsWith('~~~')) {
+    return false;
+  }
+  return _splitMarkdownTableRow(trimmed).length >= 2;
+}
+
+bool _isMarkdownTableSeparator(String line) {
+  final cells = _splitMarkdownTableRow(line);
+  if (cells.length < 2) return false;
+  return cells.every((cell) {
+    final marker = cell.replaceAll(' ', '').trim();
+    return RegExp(r'^:?-{2,}:?$').hasMatch(marker);
+  });
+}
+
+String? _markdownTableToMobileBlocks(List<String> tableLines) {
+  if (tableLines.length < 3) return null;
+  final headers = _splitMarkdownTableRow(tableLines.first);
+  if (headers.length < 2) return null;
+
+  final rows = tableLines
+      .skip(2)
+      .map(_splitMarkdownTableRow)
+      .where((row) => row.any((cell) => cell.trim().isNotEmpty))
+      .toList();
+  if (rows.isEmpty) return null;
+
+  final buffer = StringBuffer();
+  for (final row in rows) {
+    final normalizedRow = List<String>.generate(
+      headers.length,
+      (cellIndex) => cellIndex < row.length ? row[cellIndex].trim() : '',
+    );
+    final firstCell = normalizedRow.first.trim();
+    final hasTitle = firstCell.isNotEmpty;
+
+    if (hasTitle) {
+      buffer.writeln('**$firstCell**');
+    }
+
+    final startIndex = hasTitle ? 1 : 0;
+    for (var cellIndex = startIndex; cellIndex < headers.length; cellIndex++) {
+      final cell = normalizedRow[cellIndex].trim();
+      if (cell.isEmpty) continue;
+      final header = headers[cellIndex].trim();
+      if (header.isEmpty) {
+        buffer.writeln('- $cell');
+      } else {
+        buffer.writeln('- **$header**：$cell');
+      }
+    }
+    buffer.writeln();
+  }
+
+  return buffer.toString().trimRight();
+}
+
+List<String> _splitMarkdownTableRow(String line) {
+  var text = line.trim();
+  if (!text.contains('|')) return const [];
+  if (text.startsWith('|')) text = text.substring(1);
+  if (text.endsWith('|')) text = text.substring(0, text.length - 1);
+
+  final cells = <String>[];
+  final buffer = StringBuffer();
+  var escaped = false;
+  for (var index = 0; index < text.length; index++) {
+    final char = text[index];
+    if (char == '\\' && !escaped) {
+      escaped = true;
+      buffer.write(char);
+      continue;
+    }
+    if (char == '|' && !escaped) {
+      cells.add(buffer.toString().trim().replaceAll(r'\|', '|'));
+      buffer.clear();
+      continue;
+    }
+    buffer.write(char);
+    escaped = false;
+  }
+  cells.add(buffer.toString().trim().replaceAll(r'\|', '|'));
+  return cells;
 }
 
 String _softWrapMarkdownText(String text) {
@@ -418,14 +581,10 @@ String _softWrapPlainMarkdownText(String text) {
 }
 
 String normalizeMarkdownMath(String input) {
-  var normalized = input
-      .replaceAll('\r\n', '\n')
-      .replaceAll('\r', '\n')
-      .replaceAll(r'\r\n', '\n')
-      .replaceAll(r'\n', '\n')
-      .replaceAll(r'\r', '\n');
+  var normalized = _normalizeLineBreaks(input);
 
   normalized = _normalizeEmbeddedHtml(normalized);
+  normalized = _normalizeMathSentinelDelimiters(normalized);
   normalized = _normalizeDoubleEscapedMathDelimiters(normalized);
   normalized = normalized.replaceAllMapped(
     _doubleEscapedLatexCommandRe,
@@ -443,6 +602,44 @@ String normalizeMarkdownMath(String input) {
   normalized = _normalizeBareMathEnvironments(normalized);
   normalized = _normalizeBareMathLines(normalized);
   return normalized;
+}
+
+String _normalizeLineBreaks(String input) {
+  var normalized = _repairControlEscapedLatexCommands(input)
+      .replaceAll('\r\n', '\n')
+      .replaceAll('\r', '\n');
+
+  normalized = normalized.replaceAll(r'\r\n', '\n');
+  normalized = normalized.replaceAllMapped(
+    RegExp(r'\\n(?![A-Za-z])'),
+    (_) => '\n',
+  );
+  normalized = normalized.replaceAllMapped(
+    RegExp(r'\\r(?![A-Za-z])'),
+    (_) => '\n',
+  );
+  return normalized;
+}
+
+String _repairControlEscapedLatexCommands(String text) {
+  // Some imported code-199 content has "\right" decoded as carriage-return + "ight".
+  return text
+      .replaceAll('\r' 'ight', r'\right')
+      .replaceAll('\r' 'ho', r'\rho')
+      .replaceAll('\r' 'angle', r'\rangle')
+      .replaceAll('\r' 'brace', r'\rbrace');
+}
+
+String _normalizeMathSentinelDelimiters(String text) {
+  return text.replaceAllMapped(
+    RegExp(r'\$begin:math\$([\s\S]*?)\$end:math\$', caseSensitive: false),
+    (match) {
+      final body = (match.group(1) ?? '').trim();
+      if (body.isEmpty) return '';
+      if (body.contains('\n')) return '\n\$\$$body\$\$\n';
+      return '\$$body\$';
+    },
+  );
 }
 
 String _normalizeDoubleEscapedMathDelimiters(String text) {
@@ -625,6 +822,7 @@ class _EncodedMathBuilder extends MarkdownElementBuilder {
     required this.color,
     required this.fallbackColor,
     required this.baseFontSize,
+    required this.maxInlineWidth,
     this.backgroundColor,
     this.borderColor,
   });
@@ -633,13 +831,17 @@ class _EncodedMathBuilder extends MarkdownElementBuilder {
   final Color color;
   final Color fallbackColor;
   final double baseFontSize;
+  final double maxInlineWidth;
   final Color? backgroundColor;
   final Color? borderColor;
 
   @override
   Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
-    final formula = _decodeFormula(element.textContent);
+    final formula = _normalizeLatexFormula(_decodeFormula(element.textContent));
     if (formula.trim().isEmpty) return null;
+    final fallbackText = display
+        ? '\$\$${_softWrapFormulaText(formula)}\$\$'
+        : '\$${_softWrapFormulaText(formula)}\$';
 
     final math = Math.tex(
       formula,
@@ -652,7 +854,8 @@ class _EncodedMathBuilder extends MarkdownElementBuilder {
       mathStyle: display ? MathStyle.display : MathStyle.text,
       onErrorFallback: (error) {
         return Text(
-          display ? '\$\$$formula\$\$' : '\$$formula\$',
+          fallbackText,
+          softWrap: true,
           style: (preferredStyle ?? TextStyle(fontSize: baseFontSize)).copyWith(
             color: fallbackColor,
             fontStyle: FontStyle.italic,
@@ -662,7 +865,9 @@ class _EncodedMathBuilder extends MarkdownElementBuilder {
       },
     );
 
-    if (!display) return math;
+    if (!display) {
+      return _InlineMathBox(maxWidth: maxInlineWidth, child: math);
+    }
 
     return Container(
       width: double.infinity,
@@ -687,4 +892,112 @@ class _EncodedMathBuilder extends MarkdownElementBuilder {
       return payload;
     }
   }
+}
+
+class _InlineMathBox extends StatelessWidget {
+  const _InlineMathBox({
+    required this.maxWidth,
+    required this.child,
+  });
+
+  final double maxWidth;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        var effectiveMaxWidth = maxWidth;
+        if (constraints.maxWidth.isFinite &&
+            constraints.maxWidth > 0 &&
+            constraints.maxWidth < effectiveMaxWidth) {
+          effectiveMaxWidth = constraints.maxWidth;
+        }
+        return ClipRect(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: effectiveMaxWidth),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+String _normalizeLatexFormula(String raw) {
+  var formula = _repairControlEscapedLatexCommands(raw).trim();
+  formula = formula
+      .replaceAll(RegExp(r'\\dfrac\b'), r'\frac')
+      .replaceAll(RegExp(r'\\tfrac\b'), r'\frac')
+      .replaceAll(
+        RegExp(
+            r'\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b\s*'),
+        '',
+      )
+      .replaceAllMapped(
+        RegExp(r'\\\\\s*[\[［]\s*-?(?:\d+(?:\.\d+)?)?\s*pt\s*[\]］]'),
+        (_) => r'\\',
+      )
+      .replaceAll(
+        RegExp(r'\s*[\[［]\s*-?(?:\d+(?:\.\d+)?)?\s*pt\s*[\]］]\s*'),
+        ' ',
+      )
+      .replaceAll('，', ',')
+      .replaceAll('；', ';')
+      .replaceAll('：', ':')
+      .replaceAll('（', '(')
+      .replaceAll('）', ')')
+      .replaceAll('［', '[')
+      .replaceAll('］', ']')
+      .replaceAll('＋', '+')
+      .replaceAll('－', '-')
+      .replaceAll('＝', '=')
+      .replaceAll('×', r'\times ')
+      .replaceAll('÷', r'\div ')
+      .replaceAll('≤', r'\le ')
+      .replaceAll('≥', r'\ge ')
+      .replaceAll('≠', r'\ne ')
+      .replaceAll('∞', r'\infty ')
+      .replaceAll('π', r'\pi ');
+
+  formula = formula.replaceAllMapped(
+    RegExp(r'(^|[^\\A-Za-z])' + _greekIdentifierPattern + r'\b'),
+    (match) => '${match.group(1)}\\${match.group(2)}',
+  );
+  formula = formula.replaceAllMapped(
+    RegExp(r'\\sqrt\{(' +
+        _greekIdentifierPattern.substring(
+            1, _greekIdentifierPattern.length - 1) +
+        r')\}'),
+    (match) => '\\sqrt{\\${match.group(1)}}',
+  );
+  formula = formula.replaceAllMapped(
+    RegExp(r'([0-9A-Za-z)\]}])\s*°'),
+    (match) => '${match.group(1)}^\\circ',
+  );
+  formula = formula.replaceAllMapped(
+    RegExp(r'√\s*\{([^{}]+)\}'),
+    (match) => '\\sqrt{${match.group(1)}}',
+  );
+  formula = formula.replaceAllMapped(
+    RegExp(r'√\s*([A-Za-z0-9]+)'),
+    (match) => '\\sqrt{${match.group(1)}}',
+  );
+  return formula;
+}
+
+String _softWrapFormulaText(String formula) {
+  return formula
+      .replaceAllMapped(
+          RegExp(r'([,;=+\-*/<>])'), (match) => '${match.group(1)}\u200B')
+      .replaceAllMapped(
+          RegExp(
+              r'(\\qquad|\\quad|\\cdot|\\times|\\approx|\\Rightarrow|\\rightarrow)'),
+          (match) => '${match.group(1)}\u200B')
+      .replaceAllMapped(
+          RegExp(r'(\S{18})'), (match) => '${match.group(1)}\u200B');
 }

@@ -350,6 +350,7 @@ class AgentNativeEvent {
     this.status,
     this.summary,
     this.isFinal = false,
+    this.isDelta = false,
     this.state,
     this.stateName,
     this.skillId,
@@ -377,6 +378,7 @@ class AgentNativeEvent {
   final String? status;
   final String? summary;
   final bool isFinal;
+  final bool isDelta;
 
   final String? state;
   final String? stateName;
@@ -407,6 +409,7 @@ class AgentNativeEvent {
       status: json['status']?.toString(),
       summary: json['summary']?.toString(),
       isFinal: json['isFinal'] == true || json['isFinal']?.toString() == 'true',
+      isDelta: json['isDelta'] == true || json['isDelta']?.toString() == 'true',
       state: json['state']?.toString(),
       stateName: json['stateName']?.toString(),
       skillId: json['skillId']?.toString(),

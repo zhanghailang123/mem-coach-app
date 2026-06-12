@@ -257,7 +257,7 @@ class AgentOrchestrator(
                             send(AgentEvent.ThinkingUpdate(chunk.reasoningContent))
                         }
                         if (!chunk.content.isNullOrBlank()) {
-                            send(AgentEvent.ChatMessage(accumulator.content, isFinal = false))
+                            send(AgentEvent.ChatMessage(chunk.content, isFinal = false, isDelta = true))
                         }
                     }
                 )
@@ -271,7 +271,7 @@ class AgentOrchestrator(
                             send(AgentEvent.ThinkingUpdate(chunk.reasoningContent))
                         }
                         if (!chunk.content.isNullOrBlank()) {
-                            send(AgentEvent.ChatMessage(accumulator.content, isFinal = false))
+                            send(AgentEvent.ChatMessage(chunk.content, isFinal = false, isDelta = true))
                         }
                     }
                 )

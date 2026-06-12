@@ -48,7 +48,8 @@ object AgentEventMapper {
         is AgentEvent.ChatMessage -> mapOf(
             "type" to "chat_message",
             "content" to event.content,
-            "isFinal" to event.isFinal
+            "isFinal" to event.isFinal,
+            "isDelta" to event.isDelta
         )
 
         is AgentEvent.ReflectionCheck -> mapOf(

@@ -963,9 +963,15 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
   }
 
   void _setupPageContext() async {
+    // 立即设置最小上下文，避免异步等待期间残留旧数据
+    PageContextManager().setContext({
+      'type': 'question',
+      'question_id': widget.questionId,
+    });
     final data = await _questionFuture;
-    if (data['error'] != null) return;
+    if (data['error'] != null || !mounted) return;
     final options = _parseOptions(data['options']);
+    // 用完整数据覆盖最小上下文
     PageContextManager().setContext({
       'type': 'question',
       'question_id': widget.questionId,

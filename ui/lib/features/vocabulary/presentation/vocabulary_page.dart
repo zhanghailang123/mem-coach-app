@@ -607,16 +607,23 @@ class _VocabularyPageState extends State<VocabularyPage> {
 
   // 导航到详情页，如果状态改变返回，则刷新数据
   void _navigateToDetail(String wordId) async {
-    // 获取单词数据并设置页面上下文
-    final detail = await MemCoachNativeBridge.callAgentTool(
-        'vocabulary_detail', {'word_id': wordId});
+    // 立即设置最小上下文，避免异步等待期间残留旧数据
     PageContextManager().setContext({
       'type': 'vocabulary',
       'word_id': wordId,
-      'word': detail['word'],
-      'definitions': detail['definitions'],
-      'phonetic': detail['phonetic'],
     });
+    // 获取完整数据后用完整上下文覆盖
+    final detail = await MemCoachNativeBridge.callAgentTool(
+        'vocabulary_detail', {'word_id': wordId});
+    if (mounted) {
+      PageContextManager().setContext({
+        'type': 'vocabulary',
+        'word_id': wordId,
+        'word': detail['word'],
+        'definitions': detail['definitions'],
+        'phonetic': detail['phonetic'],
+      });
+    }
 
     final needRefresh = await Navigator.push<bool>(
       context,
@@ -945,7 +952,8 @@ class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
                     children: [
                       // 1. 单词头部信息区域 (作为页面主标题，直接在背景上排布)
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 8),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -958,8 +966,10 @@ class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
                                     style: TextStyle(
                                       fontSize: titleFontSize,
                                       fontWeight: FontWeight.w900,
-                                      color: Theme.of(context).colorScheme.onSurface,
-                                      letterSpacing: -0.6,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface,
+                                      letterSpacing: 0,
                                     ),
                                   ),
                                 ),

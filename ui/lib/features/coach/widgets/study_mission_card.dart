@@ -40,12 +40,14 @@ class StudyMissionCard extends StatefulWidget {
 class _StudyMissionCardState extends State<StudyMissionCard> {
   bool _loadingQuick = false;
 
-  StudyMissionData get _mission => widget.mission ?? const StudyMissionData(
-    title: '否定后件式 · 真题专项突破',
-    subtitle: '来源：2020-2024 管综逻辑真题 · 5 道题',
-    estimatedMinutes: 18,
-    questionCount: 5,
-  );
+  StudyMissionData get _mission =>
+      widget.mission ??
+      const StudyMissionData(
+        title: '否定后件式 · 真题专项突破',
+        subtitle: '来源：2020-2024 管综逻辑真题 · 5 道题',
+        estimatedMinutes: 18,
+        questionCount: 5,
+      );
 
   void _startPractice() {
     PracticePage.navigate(
@@ -89,14 +91,16 @@ class _StudyMissionCardState extends State<StudyMissionCard> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
                   '今日主线任务',
-                  style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 13),
+                  style: TextStyle(
+                      color: color, fontWeight: FontWeight.w800, fontSize: 13),
                 ),
               ),
               const Spacer(),
@@ -109,7 +113,8 @@ class _StudyMissionCardState extends State<StudyMissionCard> {
           const SizedBox(height: 22),
           Text(
             m.title,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5),
+            style: const TextStyle(
+                fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 0),
           ),
           const SizedBox(height: 10),
           Text(
@@ -139,7 +144,8 @@ class _StudyMissionCardState extends State<StudyMissionCard> {
                   label: const Text('开始练习'),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
                   ),
                 ),
               ),
@@ -148,13 +154,17 @@ class _StudyMissionCardState extends State<StudyMissionCard> {
                 child: OutlinedButton.icon(
                   onPressed: _loadingQuick ? null : _quickPractice,
                   icon: _loadingQuick
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.flash_on_rounded, size: 18),
                   label: const Text('极速 3 题'),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     side: BorderSide(color: color.withOpacity(0.2)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
                   ),
                 ),
               ),

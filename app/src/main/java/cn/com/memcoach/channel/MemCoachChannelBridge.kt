@@ -362,7 +362,10 @@ class MemCoachChannelBridge(
                         base["entryId"] = entryId
                         base["roundIndex"] = activeRound.coerceAtLeast(1)
                         base["streamMeta"] = streamMeta(entryId, activeRound, kind) +
-                            mapOf("isFinal" to event.isFinal)
+                            mapOf(
+                                "isFinal" to event.isFinal,
+                                "isDelta" to event.isDelta
+                            )
                     }
 
                     is AgentEvent.ToolCallStart -> {
@@ -492,7 +495,9 @@ class MemCoachChannelBridge(
                     )
                 ).collect { event ->
                     val eventMap = enrichEventMap(event)
-                    persistAgentEvent(conversationId, runId, eventMap)
+                    if (!event.isVolatileAssistantDelta()) {
+                        persistAgentEvent(conversationId, runId, eventMap)
+                    }
                     when (event) {
                         is AgentEvent.ThinkingUpdate -> reasoningBuffer.append(event.content)
                         is AgentEvent.ToolCallStart -> {
@@ -516,7 +521,11 @@ class MemCoachChannelBridge(
                             )
                         }
                         is AgentEvent.ChatMessage -> {
-                            assistantContent = event.content
+                            assistantContent = if (event.isDelta) {
+                                assistantContent + event.content
+                            } else {
+                                event.content
+                            }
                             if (event.isFinal) {
                                 persistAgentTurnMessages(
                                     conversationId = conversationId,
@@ -597,6 +606,10 @@ class MemCoachChannelBridge(
         }
 
         return "started"
+    }
+
+    private fun AgentEvent.isVolatileAssistantDelta(): Boolean {
+        return this is AgentEvent.ChatMessage && isDelta && !isFinal
     }
 
     private suspend fun markAgentRunFinished(

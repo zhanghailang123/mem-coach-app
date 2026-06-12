@@ -76,6 +76,10 @@ class _ChatSheetState extends State<ChatSheet> {
   StreamSubscription<AgentNativeEvent>? _sub;
   String _status = '';
   bool _running = false;
+  final StringBuffer _assistantDeltaBuffer = StringBuffer();
+  Timer? _assistantDeltaFlushTimer;
+  static const Duration _assistantDeltaFlushInterval =
+      Duration(milliseconds: 50);
 
   // Agent 流式事件状态管理（借鉴 OpenOmniBot Reducer 模式）
   final AgentStreamReducer _agentStreamReducer = const AgentStreamReducer();
@@ -113,6 +117,7 @@ class _ChatSheetState extends State<ChatSheet> {
   bool _isAutoCompleting = false;
 
   Map<String, dynamic>? _activePageContext;
+  String? _manuallyClearedContextId; // 手动清除的上下文ID
 
   @override
   void initState() {
@@ -125,8 +130,34 @@ class _ChatSheetState extends State<ChatSheet> {
           TextSelection.collapsed(offset: _controller.text.length);
     }
 
+    // 监听页面上下文变化
+    PageContextManager().addListener(_onPageContextChanged);
+
     // 初始化会话
     _initConversation();
+  }
+
+  void _onPageContextChanged() {
+    if (!mounted) return;
+    final newContext = PageContextManager().currentContext;
+    if (newContext == null) {
+      setState(() {
+        _activePageContext = null;
+        _manuallyClearedContextId = null;
+      });
+      return;
+    }
+
+    final newId = (newContext['question_id'] ?? newContext['word_id'])?.toString();
+    if (_manuallyClearedContextId != null && _manuallyClearedContextId == newId) {
+      // 忽略手动清除的相同上下文更新
+      return;
+    }
+
+    setState(() {
+      _activePageContext = newContext;
+      _manuallyClearedContextId = null;
+    });
   }
 
   void _subscribeAgentEvents() {
@@ -299,7 +330,23 @@ class _ChatSheetState extends State<ChatSheet> {
     }
     _agentStreamState = reduceResult.nextState;
 
+    if (event.type == 'chat_message' &&
+        event.isDelta &&
+        event.isFinal != true) {
+      _queueAssistantDelta(event.content ?? '');
+      return;
+    }
+
+    final pendingAssistantDelta =
+        event.type == 'chat_message' ? '' : _takePendingAssistantDelta();
     setState(() {
+      if (pendingAssistantDelta.isNotEmpty) {
+        _status = 'Agent 正在回复...';
+        _isThinking = false;
+        _thinkingStage = 3;
+        _thinkingEndTime ??= DateTime.now().millisecondsSinceEpoch;
+        _appendAssistantDelta(pendingAssistantDelta);
+      }
       switch (event.type) {
         case 'state_changed':
           _currentStateName = event.stateName ?? '';
@@ -414,6 +461,7 @@ class _ChatSheetState extends State<ChatSheet> {
           }
           break;
         case 'chat_message':
+          _discardPendingAssistantDelta();
           _status = 'Agent 正在回复...';
           _isThinking = false;
           _thinkingStage = 3;
@@ -571,10 +619,12 @@ class _ChatSheetState extends State<ChatSheet> {
 
   @override
   void dispose() {
+    _assistantDeltaFlushTimer?.cancel();
     _sub?.cancel();
     _controller.dispose();
 
     _scrollController.dispose();
+    PageContextManager().removeListener(_onPageContextChanged); // 移除上下文监听
     PageContextManager().requestRefresh(); // 销毁聊天框时发送全局数据刷新广播
     super.dispose();
   }
@@ -793,6 +843,48 @@ class _ChatSheetState extends State<ChatSheet> {
       content: mergedContent,
       reasoningContent: _currentThinkingContent(),
     ));
+  }
+
+  void _appendAssistantDelta(String content) {
+    _ensureAssistantMessage();
+    if (content.isEmpty) return;
+    final last = _messages.removeLast();
+    _messages.add(last.copyWith(
+      content: last.content + content,
+      reasoningContent: _currentThinkingContent(),
+    ));
+  }
+
+  void _queueAssistantDelta(String content) {
+    if (content.isEmpty) return;
+    _assistantDeltaBuffer.write(content);
+    _assistantDeltaFlushTimer ??=
+        Timer(_assistantDeltaFlushInterval, _flushAssistantDelta);
+  }
+
+  void _flushAssistantDelta() {
+    final content = _takePendingAssistantDelta();
+    if (!mounted || content.isEmpty) return;
+    setState(() {
+      _status = 'Agent 正在回复...';
+      _isThinking = false;
+      _thinkingStage = 3;
+      _thinkingEndTime ??= DateTime.now().millisecondsSinceEpoch;
+      _appendAssistantDelta(content);
+    });
+    _scrollToBottom(animated: false);
+  }
+
+  void _discardPendingAssistantDelta() {
+    _takePendingAssistantDelta();
+  }
+
+  String _takePendingAssistantDelta() {
+    _assistantDeltaFlushTimer?.cancel();
+    _assistantDeltaFlushTimer = null;
+    final content = _assistantDeltaBuffer.toString();
+    _assistantDeltaBuffer.clear();
+    return content;
   }
 
   String? _currentThinkingContent() {
@@ -1635,9 +1727,8 @@ class _ChatSheetState extends State<ChatSheet> {
       return const SizedBox.shrink();
     }
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final type = _activePageContext!['type']?.toString();
-    
+
     String label = '关联上下文';
     IconData icon = Icons.link_rounded;
     Color color = Theme.of(context).colorScheme.primary;
@@ -1649,7 +1740,8 @@ class _ChatSheetState extends State<ChatSheet> {
       color = const Color(0xFF5B5FEF);
     } else if (type == 'question') {
       final stem = _activePageContext!['stem']?.toString() ?? '';
-      final displayStem = stem.length > 22 ? '${stem.substring(0, 22)}...' : stem;
+      final displayStem =
+          stem.length > 22 ? '${stem.substring(0, 22)}...' : stem;
       label = '关联真题：$displayStem';
       icon = Icons.quiz_rounded;
       color = const Color(0xFF20B486);
@@ -1686,6 +1778,11 @@ class _ChatSheetState extends State<ChatSheet> {
                 GestureDetector(
                   onTap: () {
                     setState(() {
+                      if (_activePageContext != null) {
+                        _manuallyClearedContextId = (_activePageContext!['question_id'] ??
+                                _activePageContext!['word_id'])
+                            ?.toString();
+                      }
                       _activePageContext = null;
                     });
                   },

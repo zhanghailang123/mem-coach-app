@@ -145,7 +145,8 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final streakText = data.streak > 0 ? '连续学习 ${data.streak} 天' : '开始你的学习之旅';
-    final examText = data.daysUntilExam > 0 ? '距考试 ${data.daysUntilExam} 天' : '';
+    final examText =
+        data.daysUntilExam > 0 ? '距考试 ${data.daysUntilExam} 天' : '';
 
     return Row(
       children: [
@@ -158,14 +159,15 @@ class _Header extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w900,
-                  letterSpacing: -0.3,
+                  letterSpacing: 0,
                 ),
               ),
               const SizedBox(height: 3),
               Text(
                 [if (examText.isNotEmpty) examText, streakText].join(' · '),
                 style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                   fontSize: 13,
                 ),
               ),
@@ -178,7 +180,8 @@ class _Header extends StatelessWidget {
               context: context,
               builder: (context) => AlertDialog(
                 title: const Text('通知中心'),
-                content: const Text('暂无新通知。\n\n通知功能将在后续版本中完善，包括：\n• 学习提醒\n• 复习提醒\n• 成就通知'),
+                content: const Text(
+                    '暂无新通知。\n\n通知功能将在后续版本中完善，包括：\n• 学习提醒\n• 复习提醒\n• 成就通知'),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
@@ -215,8 +218,10 @@ class _DashboardCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final double accuracy = data.todayTotal > 0 ? (data.todayCorrect / data.todayTotal) : 0.0;
-    final String accuracyText = data.todayTotal > 0 ? '${(accuracy * 100).toInt()}%' : '0%';
+    final double accuracy =
+        data.todayTotal > 0 ? (data.todayCorrect / data.todayTotal) : 0.0;
+    final String accuracyText =
+        data.todayTotal > 0 ? '${(accuracy * 100).toInt()}%' : '0%';
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
@@ -254,10 +259,13 @@ class _DashboardCard extends StatelessWidget {
               alignment: Alignment.center,
               children: [
                 CircularProgressIndicator(
-                  value: data.todayTotal > 0 ? (data.todayCorrect / data.todayTotal).clamp(0.0, 1.0) : 0.0,
+                  value: data.todayTotal > 0
+                      ? (data.todayCorrect / data.todayTotal).clamp(0.0, 1.0)
+                      : 0.0,
                   strokeWidth: 7.5,
                   backgroundColor: const Color(0xFF5B5FEF).withOpacity(0.08),
-                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF5B5FEF)),
+                  valueColor:
+                      const AlwaysStoppedAnimation<Color>(Color(0xFF5B5FEF)),
                 ),
                 Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -274,7 +282,10 @@ class _DashboardCard extends StatelessWidget {
                       '今日正确率',
                       style: TextStyle(
                         fontSize: 8,
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.5),
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -355,7 +366,9 @@ class _TodayTasks extends StatelessWidget {
             iconBg: const Color(0xFF5B5FEF).withOpacity(0.08),
             iconColor: const Color(0xFF5B5FEF),
             title: '逻辑真题演练',
-            subtitle: data.todayTotal > 0 ? '今日已练 ${data.todayTotal} 题 · 建议再完成 5 题' : '建议完成 5 题真题摸底',
+            subtitle: data.todayTotal > 0
+                ? '今日已练 ${data.todayTotal} 题 · 建议再完成 5 题'
+                : '建议完成 5 题真题摸底',
             actionText: '去练习',
             onTap: () {
               PracticePage.navigate(
@@ -374,7 +387,9 @@ class _TodayTasks extends StatelessWidget {
             iconBg: const Color(0xFFEF476F).withOpacity(0.08),
             iconColor: const Color(0xFFEF476F),
             title: '记忆闪卡背诵',
-            subtitle: data.dueReviewCount > 0 ? '有 ${data.dueReviewCount} 个词汇已到期需复习' : '词汇背诵已全部完成',
+            subtitle: data.dueReviewCount > 0
+                ? '有 ${data.dueReviewCount} 个词汇已到期需复习'
+                : '词汇背诵已全部完成',
             actionText: '去背诵',
             onTap: () {
               PracticePage.navigate(
@@ -465,7 +480,10 @@ class _TodayTasks extends StatelessWidget {
                     subtitle,
                     style: TextStyle(
                       fontSize: 11.5,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.5),
                       fontWeight: FontWeight.w500,
                     ),
                     maxLines: 1,
@@ -523,7 +541,8 @@ class _PdfMaterialCard extends StatelessWidget {
                 color: isDark ? const Color(0xFF1D1D26) : Colors.white,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                  color:
+                      Theme.of(context).colorScheme.primary.withOpacity(0.15),
                   width: 1.0,
                 ),
               ),
@@ -551,7 +570,10 @@ class _PdfMaterialCard extends StatelessWidget {
                     '导入 PDF 真题以进行全考点拆解',
                     style: TextStyle(
                       fontSize: 11.5,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.5),
                     ),
                   ),
                 ],
@@ -600,13 +622,18 @@ class _MinimalUploadEntryState extends State<_MinimalUploadEntry> {
                 ? const SizedBox(
                     width: 12,
                     height: 12,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
                   )
-                : const Icon(Icons.cloud_upload_outlined, color: Colors.white, size: 14),
+                : const Icon(Icons.cloud_upload_outlined,
+                    color: Colors.white, size: 14),
             const SizedBox(width: 6),
             Text(
               _isUploading ? '导入中' : '导入 PDF',
-              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -670,9 +697,11 @@ class _MinimalUploadEntryState extends State<_MinimalUploadEntry> {
     }
   }
 
-  Future<Map<String, dynamic>?> _showUploadParamsDialog(BuildContext context) async {
+  Future<Map<String, dynamic>?> _showUploadParamsDialog(
+      BuildContext context) async {
     String? selectedSubject;
-    final yearController = TextEditingController(text: DateTime.now().year.toString());
+    final yearController =
+        TextEditingController(text: DateTime.now().year.toString());
 
     return showDialog<Map<String, dynamic>>(
       context: context,
@@ -683,7 +712,8 @@ class _MinimalUploadEntryState extends State<_MinimalUploadEntry> {
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
-                decoration: const InputDecoration(labelText: '科目', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                    labelText: '科目', border: OutlineInputBorder()),
                 value: selectedSubject,
                 items: const [
                   DropdownMenuItem(value: 'logic', child: Text('逻辑')),
@@ -696,25 +726,33 @@ class _MinimalUploadEntryState extends State<_MinimalUploadEntry> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: yearController,
-                decoration: const InputDecoration(labelText: '年份', border: OutlineInputBorder(), hintText: '例如：2024'),
+                decoration: const InputDecoration(
+                    labelText: '年份',
+                    border: OutlineInputBorder(),
+                    hintText: '例如：2024'),
                 keyboardType: TextInputType.number,
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消')),
             FilledButton(
               onPressed: () {
                 if (selectedSubject == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请选择科目')));
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('请选择科目')));
                   return;
                 }
                 final year = int.tryParse(yearController.text);
                 if (year == null || year <= 0) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入有效的年份')));
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('请输入有效的年份')));
                   return;
                 }
-                Navigator.pop(context, {'subject': selectedSubject, 'year': year});
+                Navigator.pop(
+                    context, {'subject': selectedSubject, 'year': year});
               },
               child: const Text('上传'),
             ),

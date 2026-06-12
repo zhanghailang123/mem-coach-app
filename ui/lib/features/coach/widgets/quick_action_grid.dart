@@ -19,7 +19,7 @@ class _QuickActionGridState extends State<QuickActionGrid> {
   Widget build(BuildContext context) {
     final items = [
       _QuickAction('上传真题', Icons.upload_file_rounded, const Color(0xFF5B5FEF)),
-      _QuickAction('知识图谱', Icons.hub_rounded, const Color(0xFF20B486)),
+      _QuickAction('知识库', Icons.library_books_rounded, const Color(0xFF20B486)),
       _QuickAction('模拟考试', Icons.science_rounded, const Color(0xFFFF9F1C)),
       _QuickAction('背诵模式', Icons.psychology_alt_rounded, const Color(0xFFEF476F)),
     ];
@@ -83,7 +83,7 @@ class _QuickActionGridState extends State<QuickActionGrid> {
       case 0: // 上传真题
         await _uploadPdf(context);
         break;
-      case 1: // 知识图谱 - 跳转到知识库页面
+      case 1: // 知识库 - 跳转到知识库页面
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => const KnowledgePage(),

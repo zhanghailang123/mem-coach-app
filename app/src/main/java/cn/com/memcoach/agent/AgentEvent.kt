@@ -40,7 +40,11 @@ sealed class AgentEvent {
     ) : AgentEvent()
 
     /** 聊天消息（最终回复或中间输出） */
-    data class ChatMessage(val content: String, val isFinal: Boolean = false) : AgentEvent()
+    data class ChatMessage(
+        val content: String,
+        val isFinal: Boolean = false,
+        val isDelta: Boolean = false
+    ) : AgentEvent()
 
     /** Self-Reflection 检查点触发 */
     data class ReflectionCheck(val round: Int) : AgentEvent()

@@ -139,7 +139,6 @@ class _InsightPageState extends State<InsightPage> {
           final weakPoints = _readMapList(data['weak_points']);
           final dailyStats = _readMapList(data['daily_stats']);
           final subjectProgress = _readMapList(data['subject_progress']);
-          final modeCounts = _readMapList(data['mode_counts']);
 
           return ListView(
             padding: const EdgeInsets.only(
@@ -151,13 +150,9 @@ class _InsightPageState extends State<InsightPage> {
                 totalStudyTimeSeconds: totalStudyTimeSeconds,
               ),
               const SizedBox(height: 16),
-              _SubjectProgressCard(subjectProgress: subjectProgress),
+              _KnowledgeBaseCard(subjectProgress: subjectProgress),
               const SizedBox(height: 16),
               _WeakPointList(weakPoints: weakPoints),
-              const SizedBox(height: 16),
-              _ModeBreakdownCard(modeCounts: modeCounts),
-              const SizedBox(height: 16),
-              const _KnowledgeGraphCard(),
               const SizedBox(height: 16),
               _HeatmapCard(dailyStats: dailyStats),
             ],
@@ -241,8 +236,8 @@ class _ScoreCard extends StatelessWidget {
   }
 }
 
-class _SubjectProgressCard extends StatelessWidget {
-  const _SubjectProgressCard({required this.subjectProgress});
+class _KnowledgeBaseCard extends StatelessWidget {
+  const _KnowledgeBaseCard({required this.subjectProgress});
 
   final List<Map<dynamic, dynamic>> subjectProgress;
 
@@ -252,88 +247,97 @@ class _SubjectProgressCard extends StatelessWidget {
       return _readInt(item['total']) > 0 || _readInt(item['learned']) > 0;
     }).toList();
 
-    if (visibleItems.isEmpty) {
-      return _InsightCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('科目掌握进度',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 14),
-            Text(
-              '暂无知识点掌握记录，完成练习后会自动更新。',
-              style: TextStyle(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.5)),
-            ),
-          ],
-        ),
-      );
-    }
-
     return _InsightCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('科目掌握进度',
+          const Text('知识库',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
           const SizedBox(height: 14),
-          ...visibleItems.map((item) {
-            final label = item['label']?.toString() ??
-                _subjectLabel(item['subject']?.toString());
-            final total = _readInt(item['total']);
-            final learned = _readInt(item['learned']);
-            final mastered = _readInt(item['mastered']);
-            final progress = _clamp01(_readDouble(item['progress']));
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          label,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                      Text(
-                        '$mastered/$total 已掌握',
-                        style: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.55),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
-                    child:
-                        LinearProgressIndicator(value: progress, minHeight: 8),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '已练过 $learned 个考点',
-                    style: TextStyle(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.45),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+          if (visibleItems.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '开始做题或背诵后，这里将同步显示你的考点掌握情况。',
+                style: TextStyle(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.5),
+                    fontSize: 13.5,
+                    height: 1.45),
               ),
-            );
-          }),
+            )
+          else
+            ...visibleItems.map((item) {
+              final label = item['label']?.toString() ??
+                  _subjectLabel(item['subject']?.toString());
+              final total = _readInt(item['total']);
+              final learned = _readInt(item['learned']);
+              final mastered = _readInt(item['mastered']);
+              final progress = _clamp01(_readDouble(item['progress']));
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            label,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        Text(
+                          '$mastered/$total 已掌握',
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.55),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child:
+                          LinearProgressIndicator(value: progress, minHeight: 8),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '已练过 $learned 个考点',
+                      style: TextStyle(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.45),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          const Divider(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const KnowledgePage()),
+                );
+              },
+              icon: const Icon(Icons.library_books_rounded, size: 18),
+              label: const Text('进入知识库'),
+            ),
+          ),
         ],
       ),
     );
@@ -447,90 +451,7 @@ class _WeakPointList extends StatelessWidget {
   }
 }
 
-class _ModeBreakdownCard extends StatelessWidget {
-  const _ModeBreakdownCard({required this.modeCounts});
 
-  final List<Map<dynamic, dynamic>> modeCounts;
-
-  @override
-  Widget build(BuildContext context) {
-    final total =
-        modeCounts.fold<int>(0, (sum, item) => sum + _readInt(item['count']));
-
-    if (total == 0) {
-      return _InsightCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('近 7 天练习类型',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 14),
-            Text(
-              '本周还没有练习记录。',
-              style: TextStyle(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.5)),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return _InsightCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('近 7 天练习类型',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 14),
-          ...modeCounts.map((item) {
-            final label = item['label']?.toString() ??
-                _modeLabel(item['mode']?.toString());
-            final count = _readInt(item['count']);
-            final ratio = total > 0 ? count / total : 0.0;
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 48,
-                    child: Text(label,
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
-                  ),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child:
-                          LinearProgressIndicator(value: ratio, minHeight: 8),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 52,
-                    child: Text(
-                      '$count 题',
-                      textAlign: TextAlign.right,
-                      style: TextStyle(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.6),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-}
 
 class _HeatmapCard extends StatelessWidget {
   const _HeatmapCard({required this.dailyStats});
@@ -650,47 +571,4 @@ class _InsightCard extends StatelessWidget {
   }
 }
 
-// 备考知识图谱入口卡片
-class _KnowledgeGraphCard extends StatelessWidget {
-  const _KnowledgeGraphCard();
 
-  @override
-  Widget build(BuildContext context) {
-    return _InsightCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('备考知识图谱',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 6),
-          Text(
-            '精细化追踪数学、逻辑、写作与英语考点关联脉络。',
-            style: TextStyle(
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: 0.6),
-              fontSize: 13,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const KnowledgePage()),
-                );
-              },
-              icon: const Icon(Icons.hub_outlined, size: 18),
-              label: const Text('查看考点知识网'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
