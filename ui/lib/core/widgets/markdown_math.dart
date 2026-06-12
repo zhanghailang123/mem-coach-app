@@ -71,8 +71,7 @@ class MarkdownMathView extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final effectiveTextColor =
         textColor ?? (isDark ? const Color(0xFFE5E5E7) : Colors.black87);
-    final effectiveMathColor =
-        mathColor ?? effectiveTextColor;
+    final effectiveMathColor = mathColor ?? effectiveTextColor;
     final effectiveStyleSheet = styleSheet ??
         examMarkdownStyleSheet(context,
             baseFontSize: baseFontSize, textColor: effectiveTextColor);
@@ -261,6 +260,7 @@ MarkdownStyleSheet examMarkdownStyleSheet(
       height: 1.45,
     ),
     tableBorder: TableBorder.all(color: borderColor),
+    tableColumnWidth: const IntrinsicColumnWidth(),
     tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
   );
 }

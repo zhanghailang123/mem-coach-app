@@ -252,8 +252,8 @@ class _ChatSheetState extends State<ChatSheet> {
         _status = '';
       });
 
-      // 滚动到底部
-      _scrollToBottom();
+      // 首次加载历史消息时直接定位到底部，避免打开聊天框时出现滚动动画卡顿。
+      _scrollToBottom(animated: false);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -265,6 +265,8 @@ class _ChatSheetState extends State<ChatSheet> {
 
   void _handleAgentEvent(AgentNativeEvent event) {
     if (!mounted) return;
+    final isHighFrequencyStreamEvent = event.type == 'thinking_update' ||
+        (event.type == 'chat_message' && event.isFinal != true);
 
     // 使用 Reducer 模式检查事件是否需要处理
     final seq = event.raw['seq'] as int?;
@@ -427,7 +429,7 @@ class _ChatSheetState extends State<ChatSheet> {
           break;
       }
     });
-    _scrollToBottom();
+    _scrollToBottom(animated: !isHighFrequencyStreamEvent);
   }
 
   bool _isMatchingToolChip(_ChatMessage message, AgentNativeEvent event) {
@@ -600,7 +602,7 @@ class _ChatSheetState extends State<ChatSheet> {
       _thinkingStartTime = sentAt.millisecondsSinceEpoch;
       _thinkingEndTime = null;
     });
-    _scrollToBottom();
+    _scrollToBottom(animated: false);
 
     final history = _messagesForNativeHistory();
 
@@ -779,12 +781,17 @@ class _ChatSheetState extends State<ChatSheet> {
     }
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool animated = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
+        final targetOffset = _scrollController.position.maxScrollExtent;
+        if (!animated) {
+          _scrollController.jumpTo(targetOffset);
+          return;
+        }
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
+          targetOffset,
+          duration: const Duration(milliseconds: 90),
           curve: Curves.easeOut,
         );
       }

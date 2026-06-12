@@ -83,10 +83,10 @@ class _QuickActionGridState extends State<QuickActionGrid> {
       case 0: // 上传真题
         await _uploadPdf(context);
         break;
-      case 1: // 知识图谱 - 跳转到知识库页面的图谱标签
+      case 1: // 知识图谱 - 跳转到知识库页面
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => const KnowledgePage(initialTab: 1),
+            builder: (_) => const KnowledgePage(),
           ),
         );
         break;
