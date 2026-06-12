@@ -354,12 +354,11 @@ class _ChatSheetState extends State<ChatSheet> {
           _running = false;
           _status = '';
           _isThinking = false;
+          _thinkingText = '';
           _thinkingStage = 4;
           _thinkingEndTime = DateTime.now().millisecondsSinceEpoch;
           _attachThinkingToLastAssistantMessage();
           _saveAssistantMessageToDatabase();
-          // 对话彻底结束，清空临时思考状态
-          _thinkingText = '';
           _thinkingStartTime = null;
           break;
         case 'error':
@@ -776,9 +775,6 @@ class _ChatSheetState extends State<ChatSheet> {
                                     }
                                     
                                     final message = _messages[index];
-                                    if (message.role == _ChatRole.tool) {
-                                      return const SizedBox.shrink();
-                                    }
                                     if (message.role == _ChatRole.toolChip) {
                                       final durationMs = int.tryParse(message.toolCallId ?? '');
                                       return ToolCallChip(
