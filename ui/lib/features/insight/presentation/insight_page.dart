@@ -94,16 +94,22 @@ class _ScoreCard extends StatelessWidget {
             children: [
               Text('$totalQuestions', style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w900)),
               const SizedBox(width: 8),
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Text('题', style: TextStyle(color: Colors.black54)),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('题', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5))),
               ),
               const Spacer(),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text('正确率 $accuracyPercent%', style: const TextStyle(color: Color(0xFF20B486), fontWeight: FontWeight.w900)),
-                  Text('累计学习 $studyHours 小时', style: const TextStyle(color: Colors.black54, fontSize: 12)),
+                  Text(
+                    '累计学习 $studyHours 小时',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -181,10 +187,13 @@ class _WeakPointList extends StatelessWidget {
       return _InsightCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            Text('薄弱点 TOP 3', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-            SizedBox(height: 14),
-            Text('暂无薄弱点数据，去多做几道题吧！', style: TextStyle(color: Colors.black54)),
+          children: [
+            const Text('薄弱点 TOP 3', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 14),
+            Text(
+              '暂无薄弱点数据，去多做几道题吧！',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
+            ),
           ],
         ),
       );
@@ -255,11 +264,17 @@ class _HeatmapCard extends StatelessWidget {
         children: [
           const Text('本周学习热力图', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
           const SizedBox(height: 14),
-          const Text('一  二  三  四  五  六  日', style: TextStyle(color: Colors.black54)),
+          Text(
+            '一  二  三  四  五  六  日',
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
+          ),
           const SizedBox(height: 8),
           Text(hasData ? '🟩 🟩 🟨 🟩 🟩 🟩 ⬜' : '⬜ ⬜ ⬜ ⬜ ⬜ ⬜ ⬜', style: const TextStyle(fontSize: 24)),
           const SizedBox(height: 8),
-          Text('累计 $studyHours h · 日均 $dailyAvg h', style: const TextStyle(color: Colors.black54)),
+          Text(
+            '累计 $studyHours h · 日均 $dailyAvg h',
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
+          ),
         ],
       ),
     );
@@ -273,12 +288,15 @@ class _InsightCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1D1D26) : Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.black.withOpacity(0.04)),
+        border: Border.all(
+          color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.04),
+        ),
       ),
       child: child,
     );
@@ -297,7 +315,14 @@ class _KnowledgeGraphCard extends StatelessWidget {
         children: [
           const Text('备考知识图谱', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
           const SizedBox(height: 6),
-          const Text('精细化追踪数学、逻辑、写作与英语考点关联脉络。', style: TextStyle(color: Colors.black54, fontSize: 13, height: 1.4)),
+          Text(
+            '精细化追踪数学、逻辑、写作与英语考点关联脉络。',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,

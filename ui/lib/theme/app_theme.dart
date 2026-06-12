@@ -40,7 +40,7 @@ class AppTheme {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: _seed,
       brightness: Brightness.dark,
-      surface: const Color(0xFF1C1C1E),
+      surface: const Color(0xFF1D1D26),
       primary: const Color(0xFF5B5FEF),
       onPrimary: Colors.white,
       secondary: const Color(0xFF8C90FF),
@@ -55,12 +55,12 @@ class AppTheme {
       useMaterial3: true,
       brightness: Brightness.dark,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: const Color(0xFF000000),
+      scaffoldBackgroundColor: const Color(0xFF121216),
       fontFamily: 'Roboto',
       cardTheme: CardThemeData(
         elevation: 0,
-        color: const Color(0xFF1C1C1E),
-        surfaceTintColor: const Color(0xFF1C1C1E),
+        color: const Color(0xFF1D1D26),
+        surfaceTintColor: const Color(0xFF1D1D26),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       ),
       appBarTheme: const AppBarTheme(

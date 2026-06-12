@@ -37,7 +37,7 @@ class _VocabularyPageState extends State<VocabularyPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      backgroundColor: const Color(0xFFF9FAFF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text(
           '专业生词本',
@@ -45,7 +45,7 @@ class _VocabularyPageState extends State<VocabularyPage> {
         ),
         elevation: 0,
         backgroundColor: Colors.transparent,
-        foregroundColor: Colors.black87,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
         actions: [
           IconButton(
             icon: const Icon(Icons.note_add_outlined, color: Color(0xFF5B5FEF), size: 24),
@@ -191,9 +191,12 @@ class _VocabularyPageState extends State<VocabularyPage> {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1D1D26) : Colors.white,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+              border: Border.all(
+                color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF2C2C35) : const Color(0xFFE2E6F5),
+                width: 1.0,
+              ),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.015),
@@ -211,8 +214,15 @@ class _VocabularyPageState extends State<VocabularyPage> {
               },
               decoration: InputDecoration(
                 hintText: '搜索词汇...',
-                hintStyle: const TextStyle(color: Colors.black26, fontSize: 13),
-                prefixIcon: const Icon(Icons.search_rounded, color: Colors.black38, size: 20),
+                hintStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                  fontSize: 13,
+                ),
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                  size: 20,
+                ),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? GestureDetector(
                         onTap: () {
@@ -221,7 +231,11 @@ class _VocabularyPageState extends State<VocabularyPage> {
                             _searchQuery = '';
                           });
                         },
-                        child: const Icon(Icons.clear_rounded, color: Colors.black38, size: 18),
+                        child: Icon(
+                          Icons.clear_rounded,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                          size: 18,
+                        ),
                       )
                     : null,
                 border: InputBorder.none,
@@ -248,10 +262,14 @@ class _VocabularyPageState extends State<VocabularyPage> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isSelected ? const Color(0xFF5B5FEF) : Colors.white,
+                      color: isSelected
+                          ? const Color(0xFF5B5FEF)
+                          : (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1D1D26) : Colors.white),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: isSelected ? Colors.transparent : const Color(0xFFE2E6F5),
+                        color: isSelected
+                            ? Colors.transparent
+                            : (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF2C2C35) : const Color(0xFFE2E6F5)),
                         width: 1.0,
                       ),
                       boxShadow: [
@@ -268,7 +286,9 @@ class _VocabularyPageState extends State<VocabularyPage> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                        color: isSelected ? Colors.white : Colors.black54,
+                        color: isSelected
+                            ? Colors.white
+                            : (Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54),
                       ),
                     ),
                   ),
@@ -363,12 +383,16 @@ class _VocabularyPageState extends State<VocabularyPage> {
       statusText = '已掌握';
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1D1D26) : Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2C2C35) : const Color(0xFFE2E6F5),
+          width: 1.0,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.015),
@@ -393,14 +417,22 @@ class _VocabularyPageState extends State<VocabularyPage> {
                       children: [
                         Text(
                           word['word'] ?? '',
-                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.black87),
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
                         ),
                         if (word['phonetic'] != null) ...[
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               word['phonetic'],
-                              style: const TextStyle(fontSize: 12, color: Colors.black38, fontStyle: FontStyle.italic),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                                fontStyle: FontStyle.italic,
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -428,7 +460,11 @@ class _VocabularyPageState extends State<VocabularyPage> {
                 _extractDefinition(word['definitions']),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, color: Colors.black54, height: 1.45),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                  height: 1.45,
+                ),
               ),
               if (word['tags'] != null && _parseTags(word['tags']).isNotEmpty) ...[
                 const SizedBox(height: 10),
@@ -723,14 +759,16 @@ class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('单词详情', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+        title: const Text('单词详情'),
         elevation: 0,
         backgroundColor: Colors.transparent,
-        foregroundColor: Colors.black87,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
       ),
       floatingActionButton: _buildFloatingAiButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      bottomNavigationBar: _buildQuickActions(),
       body: FutureBuilder<Map<String, dynamic>>(
         future: _detailFuture,
         builder: (context, snapshot) {
@@ -763,9 +801,12 @@ class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(22),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1D1D26) : Colors.white,
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+                    border: Border.all(
+                      color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF2C2C35) : const Color(0xFFE2E6F5),
+                      width: 1.0,
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.02),
@@ -786,13 +827,22 @@ class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
                               children: [
                                 Text(
                                   word['word'] ?? '',
-                                  style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: Colors.black87, letterSpacing: -0.5),
+                                  style: TextStyle(
+                                    fontSize: 30,
+                                    fontWeight: FontWeight.w900,
+                                    color: Theme.of(context).colorScheme.onSurface,
+                                    letterSpacing: -0.5,
+                                  ),
                                 ),
                                 if (word['phonetic'] != null) ...[
                                   const SizedBox(height: 6),
                                   Text(
                                     word['phonetic'],
-                                    style: TextStyle(fontSize: 16, color: Colors.black38, fontStyle: FontStyle.italic),
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                      fontStyle: FontStyle.italic,
+                                    ),
                                   ),
                                 ],
                               ],
@@ -812,12 +862,21 @@ class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
                         ],
                       ),
                       const SizedBox(height: 24),
-                      const Text(
+                      Text(
                         '详细释义与备考解析',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black54),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                        ),
                       ),
                       const SizedBox(height: 12),
-                      const Divider(color: Color(0xFFE2E6F5), height: 1),
+                      Divider(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? const Color(0xFF2C2C35)
+                            : const Color(0xFFE2E6F5),
+                        height: 1,
+                      ),
                       const SizedBox(height: 14),
                       // 使用 MarkdownMathView 渲染详细解析，支持公式和格式
                       MarkdownMathView(
@@ -881,6 +940,55 @@ class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
       );
       Navigator.pop(context, true); // 返回 true 通知列表刷新
     }
+  }
+
+  Widget _buildQuickActions() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -2))],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () {
+                final pageContext = PageContextManager().currentContext;
+                ChatSheet.show(context, pageContext: pageContext, initialText: '帮我记忆这个单词');
+              },
+              icon: const Icon(Icons.psychology_outlined, size: 18),
+              label: const Text('记忆法'),
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () {
+                final pageContext = PageContextManager().currentContext;
+                ChatSheet.show(context, pageContext: pageContext, initialText: '用这个单词造句');
+              },
+              icon: const Icon(Icons.edit_note, size: 18),
+              label: const Text('造句'),
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () {
+                final pageContext = PageContextManager().currentContext;
+                ChatSheet.show(context, pageContext: pageContext, initialText: '推荐同义词和反义词');
+              },
+              icon: const Icon(Icons.sync_alt, size: 18),
+              label: const Text('同反义'),
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildFloatingAiButton() {

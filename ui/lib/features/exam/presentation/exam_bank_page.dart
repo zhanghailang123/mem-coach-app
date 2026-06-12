@@ -31,7 +31,7 @@ class _ExamBankPageState extends State<ExamBankPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text(
           '真题备考库',
@@ -39,7 +39,7 @@ class _ExamBankPageState extends State<ExamBankPage>
         ),
         elevation: 0,
         backgroundColor: Colors.transparent,
-        foregroundColor: Colors.black87,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Align(
@@ -50,7 +50,7 @@ class _ExamBankPageState extends State<ExamBankPage>
                 controller: _tabController,
                 isScrollable: true,
                 labelColor: const Color(0xFF5B5FEF),
-                unselectedLabelColor: Colors.black54,
+                unselectedLabelColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                 labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
                 unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13.5),
                 indicator: const UnderlineTabIndicator(
@@ -84,9 +84,9 @@ class _ExamBankPageState extends State<ExamBankPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '备考模块',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Colors.black87),
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.onSurface),
           ),
           const SizedBox(height: 12),
           // 三个科目卡片排版
@@ -131,11 +131,11 @@ class _ExamBankPageState extends State<ExamBankPage>
             children: [
               Text(
                 '选择年份 (${_subjectName(_selectedSubject)})',
-                style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w900, color: Colors.black87),
+                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.onSurface),
               ),
-              const Text(
+              Text(
                 '历年全国联考真题',
-                style: TextStyle(fontSize: 11, color: Colors.black38, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -171,11 +171,12 @@ class _ExamBankPageState extends State<ExamBankPage>
     bool isWide = false,
   }) {
     final isSelected = _selectedSubject == subject;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       height: isWide ? 85 : 125,
       decoration: BoxDecoration(
-        color: isSelected ? null : Colors.white,
+        color: isSelected ? null : (isDark ? const Color(0xFF1D1D26) : Colors.white),
         gradient: isSelected
             ? LinearGradient(
                 colors: colors,
@@ -185,7 +186,7 @@ class _ExamBankPageState extends State<ExamBankPage>
             : null,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isSelected ? Colors.transparent : const Color(0xFFE2E6F5),
+          color: isSelected ? Colors.transparent : (isDark ? const Color(0xFF2C2C35) : const Color(0xFFE2E6F5)),
           width: 1.0,
         ),
         boxShadow: [
@@ -231,7 +232,7 @@ class _ExamBankPageState extends State<ExamBankPage>
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
-                                color: isSelected ? Colors.white : Colors.black87,
+                                color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -239,7 +240,7 @@ class _ExamBankPageState extends State<ExamBankPage>
                               desc,
                               style: TextStyle(
                                 fontSize: 10.5,
-                                color: isSelected ? Colors.white70 : Colors.black38,
+                                color: isSelected ? Colors.white70 : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                               ),
                             ),
                           ],
@@ -288,7 +289,7 @@ class _ExamBankPageState extends State<ExamBankPage>
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
-                              color: isSelected ? Colors.white : Colors.black87,
+                              color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -296,7 +297,7 @@ class _ExamBankPageState extends State<ExamBankPage>
                             desc,
                             style: TextStyle(
                               fontSize: 9.5,
-                              color: isSelected ? Colors.white70 : Colors.black38,
+                              color: isSelected ? Colors.white70 : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -312,11 +313,15 @@ class _ExamBankPageState extends State<ExamBankPage>
   }
 
   Widget _yearCapsule(int year) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1D1D26) : Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2C2C35) : const Color(0xFFE2E6F5),
+          width: 1.0,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.01),
@@ -335,18 +340,18 @@ class _ExamBankPageState extends State<ExamBankPage>
               children: [
                 Text(
                   '$year',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w900,
-                    color: Colors.black87,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 1),
-                const Text(
+                Text(
                   '年联考真题',
                   style: TextStyle(
                     fontSize: 9,
-                    color: Colors.black38,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -964,6 +969,8 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
         ],
       ),
       floatingActionButton: _buildFloatingAiButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      bottomNavigationBar: _buildQuickActions(),
       body: FutureBuilder<Map<String, dynamic>>(
         future: _questionFuture,
         builder: (context, snapshot) {
@@ -1566,6 +1573,61 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
         SnackBar(content: Text('提交失败: $e'), backgroundColor: Colors.red),
       );
     }
+  }
+
+  Widget _buildQuickActions() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () {
+                final pageContext = PageContextManager().currentContext;
+                ChatSheet.show(context, pageContext: pageContext, initialText: '帮我讲解这道题');
+              },
+              icon: const Icon(Icons.lightbulb_outline, size: 18),
+              label: const Text('讲解'),
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () {
+                final pageContext = PageContextManager().currentContext;
+                ChatSheet.show(context, pageContext: pageContext, initialText: '推荐相似题目');
+              },
+              icon: const Icon(Icons.compare_arrows, size: 18),
+              label: const Text('相似题'),
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () {
+                final pageContext = PageContextManager().currentContext;
+                ChatSheet.show(context, pageContext: pageContext, initialText: '帮我总结知识点');
+              },
+              icon: const Icon(Icons.bookmark_outline, size: 18),
+              label: const Text('总结'),
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildFloatingAiButton() {

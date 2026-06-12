@@ -164,7 +164,10 @@ class _Header extends StatelessWidget {
               const SizedBox(height: 3),
               Text(
                 [if (examText.isNotEmpty) examText, streakText].join(' · '),
-                style: const TextStyle(color: Colors.black54, fontSize: 13),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                  fontSize: 13,
+                ),
               ),
             ],
           ),
@@ -214,19 +217,25 @@ class _DashboardCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final double accuracy = data.todayTotal > 0 ? (data.todayCorrect / data.todayTotal) : 0.0;
     final String accuracyText = data.todayTotal > 0 ? '${(accuracy * 100).toInt()}%' : '0%';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         // 极简浅色科技渐变背景
-        gradient: const LinearGradient(
-          colors: [Colors.white, Color(0xFFF9FAFF)],
+        gradient: LinearGradient(
+          colors: isDark
+              ? [const Color(0xFF1D1D26), const Color(0xFF161620)]
+              : [Colors.white, const Color(0xFFF9FAFF)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E6F5), width: 1.2),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2C2C35) : const Color(0xFFE2E6F5),
+          width: 1.2,
+        ),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF5B5FEF).withOpacity(0.04),
@@ -255,11 +264,19 @@ class _DashboardCard extends StatelessWidget {
                   children: [
                     Text(
                       accuracyText,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black87),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
-                    const Text(
+                    Text(
                       '今日正确率',
-                      style: TextStyle(fontSize: 8, color: Colors.black45, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 8,
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
@@ -272,9 +289,9 @@ class _DashboardCard extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildStatItem('${data.daysUntilExam}天', '考试倒计时'),
-                _buildStatItem('${data.streak}天', '连续学习'),
-                _buildStatItem('${data.todayTotal}题', '今日刷题'),
+                _buildStatItem(context, '${data.daysUntilExam}天', '考试倒计时'),
+                _buildStatItem(context, '${data.streak}天', '连续学习'),
+                _buildStatItem(context, '${data.todayTotal}题', '今日刷题'),
               ],
             ),
           ),
@@ -283,18 +300,26 @@ class _DashboardCard extends StatelessWidget {
     );
   }
 
-  Widget _buildStatItem(String val, String label) {
+  Widget _buildStatItem(BuildContext context, String val, String label) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
           val,
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.black87),
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
         ),
         const SizedBox(height: 4),
         Text(
           label,
-          style: const TextStyle(fontSize: 10, color: Colors.black45, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            fontSize: 10,
+            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ],
     );
@@ -314,12 +339,12 @@ class _TodayTasks extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '今日智能推荐清单',
             style: TextStyle(
               fontSize: 15.5,
               fontWeight: FontWeight.w900,
-              color: Colors.black87,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 12),
@@ -392,14 +417,18 @@ class _TodayTasks extends StatelessWidget {
     required String actionText,
     required VoidCallback onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDark ? const Color(0xFF1D1D26) : Colors.white,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+          border: Border.all(
+            color: isDark ? const Color(0xFF2C2C35) : const Color(0xFFE2E6F5),
+            width: 1.0,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.02),
@@ -425,12 +454,20 @@ class _TodayTasks extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.black87),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: const TextStyle(fontSize: 11.5, color: Colors.black45, fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                      fontWeight: FontWeight.w500,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -440,15 +477,15 @@ class _TodayTasks extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFF5B5FEF).withOpacity(0.06),
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
                 actionText,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF5B5FEF),
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
             ),
@@ -465,39 +502,57 @@ class _PdfMaterialCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: const Color(0xFFF6F8FF),
+          color: isDark ? const Color(0xFF171720) : const Color(0xFFF6F8FF),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+          border: Border.all(
+            color: isDark ? const Color(0xFF262630) : const Color(0xFFE2E6F5),
+            width: 1.0,
+          ),
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: isDark ? const Color(0xFF1D1D26) : Colors.white,
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF5B5FEF).withOpacity(0.15), width: 1.0),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                  width: 1.0,
+                ),
               ),
-              child: const Icon(Icons.picture_as_pdf_outlined, color: Color(0xFF5B5FEF), size: 22),
+              child: Icon(
+                Icons.picture_as_pdf_outlined,
+                color: Theme.of(context).colorScheme.primary,
+                size: 22,
+              ),
             ),
             const SizedBox(width: 14),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     '个性化资料库',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.black87),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                   ),
-                  SizedBox(height: 3),
+                  const SizedBox(height: 3),
                   Text(
                     '导入 PDF 真题以进行全考点拆解',
-                    style: TextStyle(fontSize: 11.5, color: Colors.black45),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                    ),
                   ),
                 ],
               ),
@@ -682,27 +737,27 @@ class _DailyQuoteCard extends StatelessWidget {
         children: [
           Icon(
             Icons.format_quote_rounded,
-            color: const Color(0xFF5B5FEF).withOpacity(0.12),
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
             size: 38,
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             '“ 每一个努力背诵逻辑公式的深夜，都在为你未来科学决策的每一个管理动作铺路。 ”',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12.5,
               fontStyle: FontStyle.italic,
-              color: Colors.black38,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
               height: 1.6,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             '—— MEM AI 智能导师',
             style: TextStyle(
               fontSize: 10.5,
               fontWeight: FontWeight.bold,
-              color: Colors.black26,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
             ),
           ),
         ],

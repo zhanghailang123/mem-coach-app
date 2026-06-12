@@ -51,10 +51,14 @@ class _AppShellPageState extends State<AppShellPage> {
                 child: Container(
                   height: 60,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.78),
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF1D1D26).withOpacity(0.85)
+                        : Colors.white.withOpacity(0.78),
                     borderRadius: BorderRadius.circular(28),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.35),
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white.withOpacity(0.12)
+                          : Colors.white.withOpacity(0.35),
                       width: 1.5,
                     ),
                     boxShadow: [
@@ -163,7 +167,12 @@ class _AppShellPageState extends State<AppShellPage> {
                 end: Alignment.bottomRight,
               ),
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2.0),
+              border: Border.all(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF121216)
+                    : Colors.white,
+                width: 2.0,
+              ),
               boxShadow: [
                 BoxShadow(
                   color: const Color(0xFF5B5FEF).withOpacity(0.4),
@@ -193,9 +202,10 @@ class _AppShellPageState extends State<AppShellPage> {
     required String label,
   }) {
     final isSelected = _currentIndex == index;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = isSelected
         ? Theme.of(context).colorScheme.primary
-        : Colors.black54;
+        : (isDark ? Colors.white54 : Colors.black54);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
