@@ -434,6 +434,12 @@ class _ChatSheetState extends State<ChatSheet> {
       await MemCoachNativeBridge.updateConversationMessageCount(
         conversationId: _conversationId!,
       );
+
+      // 首轮对话后自动生成标题
+      final assistantCount = _messages.where((m) => m.role == _ChatRole.assistant).length;
+      if (assistantCount == 1) {
+        _generateConversationTitle();
+      }
     } catch (error) {
       // 忽略数据库错误
       debugPrint('保存助手消息失败：$error');
