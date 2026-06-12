@@ -419,15 +419,18 @@ class _ExamBankPageState extends State<ExamBankPage>
 
         final items = (snapshot.data?['items'] as List?) ?? [];
         if (items.isEmpty) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
+              children: [
                 Icon(Icons.assignment_turned_in_outlined,
-                    size: 44, color: Colors.black12),
-                SizedBox(height: 12),
+                    size: 44, color: isDark ? Colors.white24 : Colors.black12),
+                const SizedBox(height: 12),
                 Text('暂无错题记录，继续保持！',
-                    style: TextStyle(color: Colors.black38, fontSize: 13)),
+                    style: TextStyle(
+                        color: isDark ? Colors.white38 : Colors.black38,
+                        fontSize: 13)),
               ],
             ),
           );
@@ -446,15 +449,18 @@ class _ExamBankPageState extends State<ExamBankPage>
   }
 
   Widget _wrongQuestionCard(Map<String, dynamic> item) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1D1D26) : Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFFFE9EC), width: 1.0),
+        border: Border.all(
+            color: isDark ? const Color(0xFF3D2027) : const Color(0xFFFFE9EC),
+            width: 1.0),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFEF476F).withValues(alpha: 0.015),
+            color: const Color(0xFFEF476F).withValues(alpha: isDark ? 0.05 : 0.015),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -499,10 +505,10 @@ class _ExamBankPageState extends State<ExamBankPage>
                 MarkdownMathPreview(
                   data: item['stem']?.toString() ?? '',
                   maxLines: 2,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13.5,
                     height: 1.5,
-                    color: Colors.black87,
+                    color: isDark ? Colors.white87 : Colors.black87,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -525,16 +531,17 @@ class _ExamBankPageState extends State<ExamBankPage>
 
         final questions = (snapshot.data?['questions'] as List?) ?? [];
         if (questions.isEmpty) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
+              children: [
                 Icon(Icons.star_border_rounded,
-                    size: 48, color: Colors.black12),
-                SizedBox(height: 12),
+                    size: 48, color: isDark ? Colors.white24 : Colors.black12),
+                const SizedBox(height: 12),
                 Text(
                   '暂无收藏题目',
-                  style: TextStyle(color: Colors.black38, fontSize: 13.5),
+                  style: TextStyle(color: isDark ? Colors.white38 : Colors.black38, fontSize: 13.5),
                 ),
               ],
             ),
@@ -554,6 +561,7 @@ class _ExamBankPageState extends State<ExamBankPage>
   }
 
   Widget _favoriteQuestionCard(Map<String, dynamic> q) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final section = _sectionName(q['section']?.toString());
     final year = q['year']?.toString();
     final number = q['question_number']?.toString();
@@ -561,12 +569,14 @@ class _ExamBankPageState extends State<ExamBankPage>
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1D1D26) : Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+        border: Border.all(
+            color: isDark ? const Color(0xFF2C2C35) : const Color(0xFFE2E6F5),
+            width: 1.0),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.015),
+            color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.015),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -611,10 +621,10 @@ class _ExamBankPageState extends State<ExamBankPage>
                 MarkdownMathPreview(
                   data: q['stem']?.toString() ?? '',
                   maxLines: 2,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13.5,
                     height: 1.5,
-                    color: Colors.black87,
+                    color: isDark ? Colors.white87 : Colors.black87,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -740,13 +750,14 @@ class _QuestionListPageState extends State<QuestionListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFF),
+      backgroundColor: isDark ? Theme.of(context).scaffoldBackgroundColor : const Color(0xFFF9FAFF),
       appBar: AppBar(
         title: Text('${widget.year}年${_subjectName(widget.subject)}'),
         elevation: 0,
         backgroundColor: Colors.transparent,
-        foregroundColor: Colors.black87,
+        foregroundColor: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87,
       ),
       body: FutureBuilder<Map<String, dynamic>>(
         future: _fetchFuture,
@@ -777,13 +788,14 @@ class _QuestionListPageState extends State<QuestionListPage> {
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: isDark ? const Color(0xFF1D1D26) : Colors.white,
                   borderRadius: BorderRadius.circular(18),
-                  border:
-                      Border.all(color: const Color(0xFFE2E6F5), width: 1.0),
+                  border: Border.all(
+                      color: isDark ? const Color(0xFF2C2C35) : const Color(0xFFE2E6F5),
+                      width: 1.0),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.015),
+                      color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.015),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
@@ -829,17 +841,17 @@ class _QuestionListPageState extends State<QuestionListPage> {
                             child: MarkdownMathPreview(
                               data: q['stem']?.toString() ?? '',
                               maxLines: 2,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.black87,
+                                color: isDark ? Colors.white87 : Colors.black87,
                                 height: 1.4,
                               ),
                             ),
                           ),
                           const SizedBox(width: 8),
-                          const Icon(Icons.chevron_right_rounded,
-                              color: Colors.black38),
+                          Icon(Icons.chevron_right_rounded,
+                              color: isDark ? Colors.white38 : Colors.black38),
                         ],
                       ),
                     ),
@@ -854,28 +866,29 @@ class _QuestionListPageState extends State<QuestionListPage> {
   }
 
   Widget _messageState(String title, String message) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.info_outline_rounded,
-                size: 34, color: Colors.black38),
+            Icon(Icons.info_outline_rounded,
+                size: 34, color: isDark ? Colors.white38 : Colors.black38),
             const SizedBox(height: 12),
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
-                  color: Colors.black87),
+                  color: isDark ? Colors.white87 : Colors.black87),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               message,
-              style: const TextStyle(
-                  fontSize: 13.5, height: 1.5, color: Colors.black45),
+              style: TextStyle(
+                  fontSize: 13.5, height: 1.5, color: isDark ? Colors.white54 : Colors.black45),
               textAlign: TextAlign.center,
             ),
           ],
@@ -1034,19 +1047,20 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFF),
+      backgroundColor: isDark ? Theme.of(context).scaffoldBackgroundColor : const Color(0xFFF9FAFF),
       appBar: AppBar(
         title: const Text('题目详情',
             style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
         elevation: 0,
         backgroundColor: Colors.transparent,
-        foregroundColor: Colors.black87,
+        foregroundColor: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87,
         actions: [
           IconButton(
             icon: Icon(
               _isFavorited ? Icons.star_rounded : Icons.star_border_rounded,
-              color: _isFavorited ? const Color(0xFFFFD166) : Colors.black54,
+              color: _isFavorited ? const Color(0xFFFFD166) : (isDark ? Colors.white54 : Colors.black54),
               size: 24,
             ),
             onPressed: _toggleFavorite,
@@ -1197,10 +1211,10 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                     if (questionNumber != null && questionNumber != 'null')
                       '第 $questionNumber 题',
                   ].join(' · '),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
-                    color: Colors.black87,
+                    color: isDark ? Colors.white87 : Colors.black87,
                   ),
                 ),
               ),
@@ -1223,17 +1237,18 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
   }
 
   Widget _metaPill(String text) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F6FA),
+        color: isDark ? const Color(0xFF2C2C35) : const Color(0xFFF4F6FA),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+        border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04)),
       ),
       child: Text(
         text,
-        style: const TextStyle(
-            fontSize: 12, fontWeight: FontWeight.w800, color: Colors.black54),
+        style: TextStyle(
+            fontSize: 12, fontWeight: FontWeight.w800, color: isDark ? Colors.white54 : Colors.black54),
       ),
     );
   }
@@ -1243,15 +1258,16 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
     required String title,
     String? trailing,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(icon, color: Colors.black54, size: 20),
+        Icon(icon, color: isDark ? Colors.white54 : Colors.black54, size: 20),
         const SizedBox(width: 8),
         Text(
           title,
-          style: const TextStyle(
-              fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black87),
+          style: TextStyle(
+              fontSize: 16, fontWeight: FontWeight.w900, color: isDark ? Colors.white87 : Colors.black87),
         ),
         if (trailing != null && trailing.isNotEmpty) ...[
           const SizedBox(width: 10),
@@ -1412,8 +1428,8 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                   const SizedBox(height: 6),
                   Text(
                     detail,
-                    style: const TextStyle(
-                        fontSize: 13.5, height: 1.45, color: Colors.black54),
+                    style: TextStyle(
+                        fontSize: 13.5, height: 1.45, color: isDark ? Colors.white54 : Colors.black54),
                   ),
                 ],
               ],
@@ -1445,13 +1461,13 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
           bgColor = const Color(0xFFEF476F).withValues(alpha: 0.08);
           borderColor = const Color(0xFFEF476F);
         } else {
-          bgColor = Colors.grey.shade50;
+          bgColor = isDark ? const Color(0xFF23232C) : Colors.grey.shade50;
           borderColor = Colors.transparent;
         }
       } else {
         bgColor = active
             ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.08)
-            : Colors.grey.shade50;
+            : (isDark ? const Color(0xFF23232C) : Colors.grey.shade50);
         borderColor =
             active ? Theme.of(context).colorScheme.primary : Colors.transparent;
       }
@@ -1481,7 +1497,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                       decoration: BoxDecoration(
                         color: active || isCorrectAnswer || isWrongSelection
                             ? Colors.transparent
-                            : Colors.black.withValues(alpha: 0.04),
+                            : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04)),
                         shape: BoxShape.circle,
                       ),
                       child: Center(
@@ -1491,7 +1507,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                             fontWeight: FontWeight.w900,
                             color: active || isCorrectAnswer || isWrongSelection
                                 ? Theme.of(context).colorScheme.primary
-                                : Colors.black54,
+                                : (isDark ? Colors.white54 : Colors.black54),
                           ),
                         ),
                       ),
@@ -1558,22 +1574,22 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.info_outline_rounded,
-                size: 34, color: Colors.black38),
+            Icon(Icons.info_outline_rounded,
+                size: 34, color: isDark ? Colors.white38 : Colors.black38),
             const SizedBox(height: 12),
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
-                  color: Colors.black87),
+                  color: isDark ? Colors.white87 : Colors.black87),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               message,
-              style: const TextStyle(
-                  fontSize: 13.5, height: 1.5, color: Colors.black45),
+              style: TextStyle(
+                  fontSize: 13.5, height: 1.5, color: isDark ? Colors.white54 : Colors.black45),
               textAlign: TextAlign.center,
             ),
           ],
