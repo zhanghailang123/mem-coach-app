@@ -748,7 +748,7 @@ class _ChatSheetState extends State<ChatSheet> {
                           ? _buildEmptyState()
                           : Builder(
                               builder: (context) {
-                                final showLiveThinking = _isThinking || _thinkingText.trim().isNotEmpty;
+                                final showLiveThinking = _isThinking && _thinkingText.trim().isNotEmpty;
                                 final liveThinkingText = _thinkingText.trim().isNotEmpty
                                     ? _thinkingText
                                     : _thinkingPlaceholder;
@@ -775,6 +775,9 @@ class _ChatSheetState extends State<ChatSheet> {
                                     }
                                     
                                     final message = _messages[index];
+                                    if (message.role == _ChatRole.tool) {
+                                      return const SizedBox.shrink();
+                                    }
                                     if (message.role == _ChatRole.toolChip) {
                                       final durationMs = int.tryParse(message.toolCallId ?? '');
                                       return ToolCallChip(
