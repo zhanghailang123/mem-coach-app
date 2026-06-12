@@ -1097,8 +1097,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildInfoCard(q),
-                const SizedBox(height: 14),
+                _buildFlatHeader(q),
                 CoachShellCard(
                   padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
                   child: Column(
@@ -1172,63 +1171,50 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
     );
   }
 
-  Widget _buildInfoCard(Map<String, dynamic> q) {
+  Widget _buildFlatHeader(Map<String, dynamic> q) {
     final year = q['year']?.toString();
     final section = _sectionName(q['section']?.toString());
     final questionNumber = q['question_number']?.toString();
     final topic = q['topic']?.toString();
     final difficulty = _difficultyName(q['difficulty']?.toString());
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return CoachShellCard(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.school_rounded,
-                  size: 20,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  [
-                    if (year != null && year != 'null') '$year 年',
-                    if (section.isNotEmpty) section,
-                    if (questionNumber != null && questionNumber != 'null')
-                      '第 $questionNumber 题',
-                  ].join(' · '),
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: isDark ? Colors.white87 : Colors.black87,
-                  ),
-                ),
-              ),
-            ],
+          Text(
+            [
+              if (year != null && year != 'null') '$year年',
+              if (section.isNotEmpty) section,
+              if (questionNumber != null && questionNumber != 'null')
+                '第 $questionNumber 题',
+            ].join(' · '),
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              if (difficulty.isNotEmpty)
+                _metaPill(difficulty, isDifficulty: true),
               if (topic != null && topic.isNotEmpty && topic != 'null')
                 _metaPill(topic),
-              if (difficulty.isNotEmpty) _metaPill(difficulty),
-              _metaPill(widget.questionId),
+              Text(
+                'ID: ${widget.questionId}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark ? Colors.white30 : Colors.black26,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
         ],
@@ -1236,19 +1222,40 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
     );
   }
 
-  Widget _metaPill(String text) {
+  Widget _metaPill(String text, {bool isDifficulty = false}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    Color bgColor = isDark ? const Color(0xFF2C2C35) : const Color(0xFFF4F6FA);
+    Color textColor = isDark ? Colors.white54 : Colors.black54;
+
+    if (isDifficulty) {
+      if (text == '基础') {
+        bgColor = const Color(0xFF20B486).withValues(alpha: isDark ? 0.15 : 0.08);
+        textColor = const Color(0xFF20B486);
+      } else if (text == '中等') {
+        bgColor = const Color(0xFFFFD166).withValues(alpha: isDark ? 0.15 : 0.08);
+        textColor = const Color(0xFFF5B041);
+      } else if (text == '较难') {
+        bgColor = const Color(0xFFEF476F).withValues(alpha: isDark ? 0.15 : 0.08);
+        textColor = const Color(0xFFEF476F);
+      }
+    }
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2C2C35) : const Color(0xFFF4F6FA),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04)),
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+        border: isDifficulty
+            ? null
+            : Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.black.withValues(alpha: 0.04)),
       ),
       child: Text(
         text,
         style: TextStyle(
-            fontSize: 12, fontWeight: FontWeight.w800, color: isDark ? Colors.white54 : Colors.black54),
+            fontSize: 11, fontWeight: FontWeight.bold, color: textColor),
       ),
     );
   }
