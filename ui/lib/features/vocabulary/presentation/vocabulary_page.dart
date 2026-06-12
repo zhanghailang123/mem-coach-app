@@ -915,6 +915,12 @@ class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
                   statusText = '已掌握';
                 }
 
+                // 根据单词或短语的长度动态调整字号，防止长词溢出
+                final wordText = word['word'] ?? '';
+                final double titleFontSize = wordText.length > 20
+                    ? 22.0
+                    : (wordText.length > 10 ? 26.0 : 30.0);
+
                 return SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
                   child: Column(
@@ -931,12 +937,12 @@ class _VocabularyDetailPageState extends State<VocabularyDetailPage> {
                               children: [
                                 Expanded(
                                   child: Text(
-                                    word['word'] ?? '',
+                                    wordText,
                                     style: TextStyle(
-                                      fontSize: 36,
+                                      fontSize: titleFontSize,
                                       fontWeight: FontWeight.w900,
                                       color: Theme.of(context).colorScheme.onSurface,
-                                      letterSpacing: -0.8,
+                                      letterSpacing: -0.6,
                                     ),
                                   ),
                                 ),
