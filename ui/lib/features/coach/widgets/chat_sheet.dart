@@ -735,8 +735,6 @@ class _ChatSheetState extends State<ChatSheet> {
                 _buildHeader(context),
                 // ── 状态指示 ──
                 if (_status.isNotEmpty && !_isTransientStatus()) _buildStatusBar(),
-                // ── 工具活动条 ──
-                if (_toolActivities.isNotEmpty) _buildToolActivityBar(),
                 // ── 斜杠命令面板 ──
 
                 if (_showSlashCommandPanel) _buildSlashCommandPanel(),
