@@ -42,7 +42,7 @@ import cn.com.memcoach.data.entity.*
         UserMemo::class,
         AgentEventEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -344,6 +344,32 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `conversations` ADD COLUMN `agent_run_id` TEXT")
+                database.execSQL("ALTER TABLE `conversations` ADD COLUMN `agent_status` TEXT")
+                database.execSQL("ALTER TABLE `conversations` ADD COLUMN `agent_started_at` INTEGER")
+                database.execSQL("ALTER TABLE `conversations` ADD COLUMN `agent_finished_at` INTEGER")
+                database.execSQL("ALTER TABLE `conversations` ADD COLUMN `agent_last_seq` INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE `conversations` ADD COLUMN `agent_error` TEXT")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_conversations_agent_run_id` ON `conversations` (`agent_run_id`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_conversations_agent_status` ON `conversations` (`agent_status`)")
+
+                database.execSQL("ALTER TABLE `agent_events` ADD COLUMN `seq` INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE `agent_events` ADD COLUMN `entry_id` TEXT")
+                database.execSQL("ALTER TABLE `agent_events` ADD COLUMN `round_index` INTEGER")
+                database.execSQL("ALTER TABLE `agent_events` ADD COLUMN `status` TEXT")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_agent_events_seq` ON `agent_events` (`seq`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_agent_events_entry_id` ON `agent_events` (`entry_id`)")
+
+                database.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `run_id` TEXT")
+                database.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `entry_id` TEXT")
+                database.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `message_status` TEXT")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_chat_messages_run_id` ON `chat_messages` (`run_id`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_chat_messages_entry_id` ON `chat_messages` (`entry_id`)")
+            }
+        }
+
         private fun buildDatabase(context: Context): AppDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,
@@ -361,7 +387,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_9_10,
                     MIGRATION_10_11,
                     MIGRATION_11_12,
-                    MIGRATION_12_13
+                    MIGRATION_12_13,
+                    MIGRATION_13_14
                 )
                 .addCallback(DatabasePreloader(context))
                 .fallbackToDestructiveMigrationFrom(1)

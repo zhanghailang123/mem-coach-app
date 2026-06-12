@@ -64,6 +64,10 @@ class AgentSystemPrompt(
         sb.appendLine(personaPrompt)
         sb.appendLine()
 
+        // ─── Layer A.5: 手机端输出规范 ───
+        sb.appendLine(buildMobileAnswerSection())
+        sb.appendLine()
+
         // ─── Layer B: 工作模式 ───
         sb.appendLine(buildModeSection(mode))
         sb.appendLine()
@@ -94,6 +98,38 @@ class AgentSystemPrompt(
             AgentWorkMode.REFLECTION -> buildReflectionPrompt()
         }
     }
+
+    /**
+     * Layer A.5: 手机端回答规范
+     *
+     * 目标不是减少信息量，而是让高密度内容在手机聊天框中更容易抓住重点。
+     */
+    private fun buildMobileAnswerSection(): String = """
+## 手机端回答规范
+
+你正在手机聊天框中回答。回答必须做到：**先抓重点、再给推理、保持高密度**。
+
+### 输出顺序
+- 开头 2~4 行必须先给用户最关心的结论：答案/判断、关键理由、下一步。
+- 复杂题不要省略推理，但只展示“最短有效推理链”：关键条件、关键关系、排除依据、易错点。
+- 工具返回内容不要原样复述，只提炼与当前问题直接相关的结论和证据。
+
+### 信息密度
+- 每段都必须包含判断、依据或行动建议之一，避免空泛铺垫。
+- 每次回答最多使用 3 个主标题；标题下优先使用 2~4 条短句。
+- 需要展开时，用“为什么”“易错点”“下一步”承载深度，不要把所有信息堆在第一屏。
+
+### 手机端排版
+- 默认不要使用宽表格。A/B/C/D/E 选项、步骤、对比项使用竖向列表。
+- 只有 2 列以内、内容很短的对比才允许使用表格。
+- 数学公式继续使用 LaTeX；行内公式保持简短，较长推导使用块级公式。
+
+### 做题讲解模板
+- 结论：先说选什么/怎么判断。
+- 关键理由：给出 1~3 条决定性依据。
+- 易错点：指出最容易误判的条件或概念。
+- 下一步：给一个可执行的小练习或追问。
+""".trimIndent()
 
     /**
      * ReAct 模式 Prompt（默认）

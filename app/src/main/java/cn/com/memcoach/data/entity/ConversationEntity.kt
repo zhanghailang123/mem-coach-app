@@ -16,7 +16,9 @@ import androidx.room.PrimaryKey
     indices = [
         Index("user_id"),
         Index("created_at"),
-        Index("updated_at")
+        Index("updated_at"),
+        Index("agent_run_id"),
+        Index("agent_status")
     ]
 )
 data class ConversationEntity(
@@ -43,5 +45,31 @@ data class ConversationEntity(
     val createdAt: Long = System.currentTimeMillis(),
 
     @ColumnInfo(name = "updated_at")
-    val updatedAt: Long = System.currentTimeMillis()
-)
+    val updatedAt: Long = System.currentTimeMillis(),
+
+    @ColumnInfo(name = "agent_run_id")
+    val agentRunId: String? = null,
+
+    @ColumnInfo(name = "agent_status")
+    val agentStatus: String? = null,
+
+    @ColumnInfo(name = "agent_started_at")
+    val agentStartedAt: Long? = null,
+
+    @ColumnInfo(name = "agent_finished_at")
+    val agentFinishedAt: Long? = null,
+
+    @ColumnInfo(name = "agent_last_seq")
+    val agentLastSeq: Long = 0,
+
+    @ColumnInfo(name = "agent_error")
+    val agentError: String? = null
+) {
+    companion object {
+        const val AGENT_STATUS_RUNNING = "running"
+        const val AGENT_STATUS_COMPLETED = "completed"
+        const val AGENT_STATUS_ERROR = "error"
+        const val AGENT_STATUS_CANCELLED = "cancelled"
+        const val AGENT_STATUS_INTERRUPTED = "interrupted"
+    }
+}

@@ -25,10 +25,19 @@ sealed class AgentEvent {
     data class ToolCallComplete(val toolName: String, val result: String, val toolCallId: String? = null) : AgentEvent()
 
     /** 工具调用失败 */
-    data class ToolCallError(val toolName: String, val error: String) : AgentEvent()
+    data class ToolCallError(
+        val toolName: String,
+        val error: String,
+        val toolCallId: String? = null
+    ) : AgentEvent()
 
     /** 工具调用重试 */
-    data class ToolCallRetry(val toolName: String, val attempt: Int, val error: String) : AgentEvent()
+    data class ToolCallRetry(
+        val toolName: String,
+        val attempt: Int,
+        val error: String,
+        val toolCallId: String? = null
+    ) : AgentEvent()
 
     /** 聊天消息（最终回复或中间输出） */
     data class ChatMessage(val content: String, val isFinal: Boolean = false) : AgentEvent()

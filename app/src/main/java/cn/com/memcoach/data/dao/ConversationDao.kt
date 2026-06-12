@@ -68,6 +68,64 @@ interface ConversationDao {
     @Query("UPDATE conversations SET summary = :summary WHERE id = :id")
     suspend fun updateSummary(id: Long, summary: String?)
 
+    /** 更新当前 Agent 运行状态 */
+    @Query("""
+        UPDATE conversations
+        SET agent_run_id = :runId,
+            agent_status = :status,
+            agent_started_at = :startedAt,
+            agent_finished_at = :finishedAt,
+            agent_last_seq = :lastSeq,
+            agent_error = :error,
+            updated_at = :updatedAt
+        WHERE id = :id
+    """)
+    suspend fun updateAgentRunState(
+        id: Long,
+        runId: String?,
+        status: String?,
+        startedAt: Long?,
+        finishedAt: Long?,
+        lastSeq: Long,
+        error: String?,
+        updatedAt: Long = System.currentTimeMillis()
+    )
+
+    /** 更新当前 Agent run 的最后事件序号 */
+    @Query("""
+        UPDATE conversations
+        SET agent_last_seq = CASE
+                WHEN agent_last_seq < :seq THEN :seq
+                ELSE agent_last_seq
+            END,
+            updated_at = :updatedAt
+        WHERE id = :id AND agent_run_id = :runId
+    """)
+    suspend fun updateAgentLastSeq(
+        id: Long,
+        runId: String,
+        seq: Long,
+        updatedAt: Long = System.currentTimeMillis()
+    )
+
+    /** 结束当前 Agent run */
+    @Query("""
+        UPDATE conversations
+        SET agent_status = :status,
+            agent_finished_at = :finishedAt,
+            agent_error = :error,
+            updated_at = :updatedAt
+        WHERE id = :id AND agent_run_id = :runId
+    """)
+    suspend fun finishAgentRun(
+        id: Long,
+        runId: String,
+        status: String,
+        finishedAt: Long = System.currentTimeMillis(),
+        error: String? = null,
+        updatedAt: Long = System.currentTimeMillis()
+    )
+
     /** 软删除会话（标记为非活跃） */
     @Query("UPDATE conversations SET is_active = 0 WHERE id = :id")
     suspend fun softDelete(id: Long)

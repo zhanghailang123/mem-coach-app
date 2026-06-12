@@ -385,7 +385,7 @@ class AgentOrchestrator(
 
                 if (toolName.isBlank() || toolName == "null") {
                     val errorResult = """{"error": "无效的工具名称 '$toolName'。请检查可用工具定义，确保名称拼写正确。"}"""
-                    send(AgentEvent.ToolCallError(toolName, "无效工具名"))
+                    send(AgentEvent.ToolCallError(toolName, "无效工具名", toolCall.id))
                     messages.add(
                         ChatMessage(
                             role = "tool",
@@ -437,7 +437,7 @@ class AgentOrchestrator(
                         lastError = e
                         if (attempt < MAX_RETRY_ATTEMPTS) {
                             // 通知 UI：工具调用重试
-                            send(AgentEvent.ToolCallRetry(toolName, attempt, e.message ?: "Unknown error"))
+                            send(AgentEvent.ToolCallRetry(toolName, attempt, e.message ?: "Unknown error", toolCall.id))
                             // 指数退避：1s, 2s, 4s...
                             delay(1000L * (1 shl (attempt - 1)))
                         }
@@ -447,7 +447,7 @@ class AgentOrchestrator(
                 // 所有重试都失败
                 if (!success) {
                     val errorResult = """{"error": "${lastError?.message?.replace("\"", "\\\"") ?: "Unknown error"}","retry_exhausted": true}"""
-                    send(AgentEvent.ToolCallError(toolName, lastError?.message ?: "Unknown error"))
+                    send(AgentEvent.ToolCallError(toolName, lastError?.message ?: "Unknown error", toolCall.id))
                     messages.add(
                         ChatMessage(
                             role = "tool",

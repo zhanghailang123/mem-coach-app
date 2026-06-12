@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/native/mem_coach_native_bridge.dart';
+import '../../../core/state/page_context_manager.dart';
 import '../../coach/presentation/practice_page.dart';
 import '../../knowledge/presentation/knowledge_page.dart';
 
@@ -76,17 +77,34 @@ class InsightPage extends StatefulWidget {
 
 class _InsightPageState extends State<InsightPage> {
   late Future<Map<String, dynamic>> _insightFuture;
+  int _lastRefreshRequestCount = 0;
 
   @override
   void initState() {
     super.initState();
     _insightFuture = MemCoachNativeBridge.getInsightSummary();
+    _lastRefreshRequestCount = PageContextManager().refreshRequestCount;
+    PageContextManager().addListener(_onContextManagerChanged);
   }
 
   void _refreshInsight() {
     setState(() {
       _insightFuture = MemCoachNativeBridge.getInsightSummary();
     });
+  }
+
+  void _onContextManagerChanged() {
+    final currentCount = PageContextManager().refreshRequestCount;
+    if (currentCount != _lastRefreshRequestCount) {
+      _lastRefreshRequestCount = currentCount;
+      _refreshInsight();
+    }
+  }
+
+  @override
+  void dispose() {
+    PageContextManager().removeListener(_onContextManagerChanged);
+    super.dispose();
   }
 
   @override

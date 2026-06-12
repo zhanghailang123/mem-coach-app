@@ -33,14 +33,16 @@ object AgentEventMapper {
         is AgentEvent.ToolCallError -> mapOf(
             "type" to "tool_call_error",
             "toolName" to event.toolName,
-            "error" to event.error
+            "error" to event.error,
+            "toolCallId" to event.toolCallId
         )
 
         is AgentEvent.ToolCallRetry -> mapOf(
             "type" to "tool_call_retry",
             "toolName" to event.toolName,
             "attempt" to event.attempt,
-            "error" to event.error
+            "error" to event.error,
+            "toolCallId" to event.toolCallId
         )
 
         is AgentEvent.ChatMessage -> mapOf(

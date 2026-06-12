@@ -260,8 +260,8 @@ MarkdownStyleSheet examMarkdownStyleSheet(
       height: 1.45,
     ),
     tableBorder: TableBorder.all(color: borderColor),
-    tableColumnWidth: const IntrinsicColumnWidth(),
-    tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    tableColumnWidth: const FlexColumnWidth(),
+    tableCellsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
   );
 }
 

@@ -13,6 +13,8 @@ import cn.com.memcoach.pdf.toMap
 import cn.com.memcoach.study.AnswerSubmissionRecorder
 import cn.com.memcoach.data.entity.AgentEventEntity
 import cn.com.memcoach.data.entity.ChatMessageEntity
+import cn.com.memcoach.data.entity.ConversationEntity
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -44,12 +46,14 @@ class MemCoachChannelBridge(
     private val longTermMemoryService: cn.com.memcoach.agent.memory.LongTermMemoryService? = null
 ) {
     private var currentAgentJob: Job? = null
+    private var currentAgentConversationId: Long? = null
+    private var currentAgentRunId: String? = null
 
     suspend fun handleMethodCall(method: String, arguments: Map<String, Any?>): Any? {
         return when (method) {
             "agent.startTurn" -> startAgentTurn(arguments)
-            "agent.cancelTurn" -> cancelAgentTurn()
-            "agent.isRunning" -> isAgentRunning()
+            "agent.cancelTurn" -> cancelAgentTurn(arguments)
+            "agent.isRunning" -> isAgentRunning(arguments)
             "agent.compactContext" -> compactContext(arguments)
             "agent.setReasoningEffort" -> setReasoningEffort(arguments)
             "pdf.upload" -> uploadPdf(arguments)
@@ -229,73 +233,400 @@ class MemCoachChannelBridge(
         val context = buildAgentContext(pageContext)
         val conversationId = (arguments["conversationId"] as? Number)?.toLong()
         val runId = "run_${System.currentTimeMillis()}"
+        val startedAt = System.currentTimeMillis()
 
+        markCurrentAgentRunCancelled("新的 Agent 请求已开始")
         currentAgentJob?.cancel()
+        currentAgentConversationId = conversationId
+        currentAgentRunId = runId
+        conversationId?.let { id ->
+            conversationDao.updateAgentRunState(
+                id = id,
+                runId = runId,
+                status = ConversationEntity.AGENT_STATUS_RUNNING,
+                startedAt = startedAt,
+                finishedAt = null,
+                lastSeq = 0,
+                error = null,
+                updatedAt = startedAt
+            )
+        }
         currentAgentJob = scope.launch {
             val toolCalls = mutableListOf<ToolCallSnapshot>()
             val toolResults = mutableListOf<ToolResultSnapshot>()
             val reasoningBuffer = StringBuilder()
             var assistantContent = ""
-            orchestrator.run(
-                AgentInput(
-                    userMessage = message,
-                    conversationHistory = history,
-                    context = context
+            var eventSeq = 0L
+            var activeRound = 0
+            var activeThinkingEntryId: String? = null
+            var activeAssistantEntryId: String? = null
+            var toolEntrySequence = 0
+            val toolEntryIds = mutableMapOf<String, String>()
+            val activeIdlessToolEntries = mutableMapOf<String, MutableList<String>>()
+            val toolArgsByEntryId = mutableMapOf<String, String>()
+
+            fun nextEventSeq(): Long {
+                eventSeq += 1
+                return eventSeq
+            }
+
+            fun nextToolEntryId(): String {
+                toolEntrySequence += 1
+                return "$runId-tool-$toolEntrySequence"
+            }
+
+            fun toolEntryIdForStart(toolName: String, toolCallId: String?): String {
+                val normalizedId = toolCallId?.trim().orEmpty()
+                if (normalizedId.isNotBlank()) {
+                    return toolEntryIds.getOrPut(normalizedId) { nextToolEntryId() }
+                }
+                val entryId = nextToolEntryId()
+                activeIdlessToolEntries.getOrPut(toolName) { mutableListOf() }.add(entryId)
+                return entryId
+            }
+
+            fun toolEntryIdForFollowup(
+                toolName: String,
+                toolCallId: String?,
+                consume: Boolean
+            ): String {
+                val normalizedId = toolCallId?.trim().orEmpty()
+                if (normalizedId.isNotBlank()) {
+                    return toolEntryIds.getOrPut(normalizedId) { nextToolEntryId() }
+                }
+
+                val entries = activeIdlessToolEntries[toolName]
+                val entryId = entries?.firstOrNull() ?: nextToolEntryId()
+                if (consume && entries != null && entries.isNotEmpty()) {
+                    entries.removeAt(0)
+                    if (entries.isEmpty()) activeIdlessToolEntries.remove(toolName)
+                }
+                return entryId
+            }
+
+            fun resolvedToolCallId(toolCallId: String?, entryId: String): String {
+                return toolCallId?.trim()?.takeIf { it.isNotBlank() } ?: entryId
+            }
+
+            fun streamMeta(entryId: String, roundIndex: Int, kind: String): Map<String, Any?> {
+                return mapOf(
+                    "entryId" to entryId,
+                    "roundIndex" to roundIndex.coerceAtLeast(1),
+                    "kind" to kind,
+                    "parentTaskId" to runId
                 )
-            ).collect { event ->
-                val eventMap = AgentEventMapper.toMap(event)
-                persistAgentEvent(conversationId, runId, eventMap)
+            }
+
+            fun enrichEventMap(event: AgentEvent): Map<String, Any?> {
+                val base = AgentEventMapper.toMap(event).toMutableMap()
+                val seq = nextEventSeq()
+                val kind = base["type"]?.toString().orEmpty()
+                val now = System.currentTimeMillis()
+                base["seq"] = seq
+                base["taskId"] = runId
+                base["runId"] = runId
+                base["createdAt"] = now
+                base["kind"] = kind
+
                 when (event) {
-                    is AgentEvent.ThinkingUpdate -> reasoningBuffer.append(event.content)
-                    is AgentEvent.ToolCallStart -> {
-                        val toolCallId = event.toolCallId ?: "tool_${toolCalls.size}_${System.currentTimeMillis()}"
-                        toolCalls.add(
-                            ToolCallSnapshot(
-                                id = toolCallId,
-                                name = event.toolName,
-                                arguments = event.arguments
-                            )
-                        )
+                    is AgentEvent.ThinkingStart -> {
+                        activeRound = event.round
+                        activeThinkingEntryId = if (event.round <= 1) {
+                            "$runId-thinking"
+                        } else {
+                            "$runId-thinking-${event.round}"
+                        }
+                        activeAssistantEntryId = null
+                        val entryId = activeThinkingEntryId.orEmpty()
+                        base["entryId"] = entryId
+                        base["roundIndex"] = activeRound
+                        base["streamMeta"] = streamMeta(entryId, activeRound, kind)
                     }
-                    is AgentEvent.ToolCallComplete -> {
-                        toolResults.add(
-                            ToolResultSnapshot(
-                                id = event.toolCallId.orEmpty(),
-                                name = event.toolName,
-                                result = event.result
-                            )
-                        )
+
+                    is AgentEvent.ThinkingUpdate -> {
+                        val entryId = activeThinkingEntryId ?: "$runId-thinking"
+                        base["entryId"] = entryId
+                        base["roundIndex"] = activeRound.coerceAtLeast(1)
+                        base["streamMeta"] = streamMeta(entryId, activeRound, kind)
                     }
+
                     is AgentEvent.ChatMessage -> {
-                        assistantContent = event.content
-                        if (event.isFinal) {
+                        if (activeAssistantEntryId == null) {
+                            activeAssistantEntryId = if (activeRound <= 1) {
+                                "$runId-text"
+                            } else {
+                                "$runId-text-$activeRound"
+                            }
+                        }
+                        val entryId = activeAssistantEntryId.orEmpty()
+                        base["entryId"] = entryId
+                        base["roundIndex"] = activeRound.coerceAtLeast(1)
+                        base["streamMeta"] = streamMeta(entryId, activeRound, kind) +
+                            mapOf("isFinal" to event.isFinal)
+                    }
+
+                    is AgentEvent.ToolCallStart -> {
+                        val entryId = toolEntryIdForStart(event.toolName, event.toolCallId)
+                        val resolvedToolCallId = resolvedToolCallId(event.toolCallId, entryId)
+                        val argsJson = event.arguments
+                        toolArgsByEntryId[entryId] = argsJson
+                        base["toolCallId"] = resolvedToolCallId
+                        base["entryId"] = entryId
+                        base["cardId"] = entryId
+                        base["roundIndex"] = activeRound.coerceAtLeast(1)
+                        base["args"] = argsJson
+                        base["argsJson"] = argsJson
+                        base["displayName"] = displayNameForTool(event.toolName)
+                        base["toolType"] = toolTypeForTool(event.toolName)
+                        base["toolTitle"] = extractToolTitle(argsJson)
+                            ?: displayNameForTool(event.toolName)
+                        base["summary"] = base["toolTitle"]
+                        base["status"] = "running"
+                        base["success"] = true
+                        base["streamMeta"] = streamMeta(entryId, activeRound, kind)
+                    }
+
+                    is AgentEvent.ToolCallComplete -> {
+                        val entryId = toolEntryIdForFollowup(
+                            event.toolName,
+                            event.toolCallId,
+                            consume = true
+                        )
+                        val resolvedToolCallId = resolvedToolCallId(event.toolCallId, entryId)
+                        val argsJson = toolArgsByEntryId[entryId].orEmpty()
+                        val resultJson = normalizeToolJsonPayload(event.result)
+                        base["toolCallId"] = resolvedToolCallId
+                        base["entryId"] = entryId
+                        base["cardId"] = entryId
+                        base["roundIndex"] = activeRound.coerceAtLeast(1)
+                        base["args"] = argsJson
+                        base["argsJson"] = argsJson
+                        base["displayName"] = displayNameForTool(event.toolName)
+                        base["toolType"] = toolTypeForTool(event.toolName)
+                        base["toolTitle"] = extractToolTitle(argsJson)
+                            ?: displayNameForTool(event.toolName)
+                        base["status"] = "success"
+                        base["success"] = true
+                        base["summary"] = summarizeToolResult(event.result)
+                        base["resultPreviewJson"] = resultJson
+                        base["rawResultJson"] = resultJson
+                        base["streamMeta"] = streamMeta(entryId, activeRound, kind)
+                    }
+
+                    is AgentEvent.ToolCallError -> {
+                        val entryId = toolEntryIdForFollowup(
+                            event.toolName,
+                            event.toolCallId,
+                            consume = true
+                        )
+                        val resolvedToolCallId = resolvedToolCallId(event.toolCallId, entryId)
+                        val argsJson = toolArgsByEntryId[entryId].orEmpty()
+                        val errorJson = JSONObject().apply {
+                            put("error", event.error)
+                            put("toolName", event.toolName)
+                        }.toString()
+                        base["toolCallId"] = resolvedToolCallId
+                        base["entryId"] = entryId
+                        base["cardId"] = entryId
+                        base["roundIndex"] = activeRound.coerceAtLeast(1)
+                        base["args"] = argsJson
+                        base["argsJson"] = argsJson
+                        base["displayName"] = displayNameForTool(event.toolName)
+                        base["toolType"] = toolTypeForTool(event.toolName)
+                        base["toolTitle"] = extractToolTitle(argsJson)
+                            ?: displayNameForTool(event.toolName)
+                        base["status"] = "error"
+                        base["success"] = false
+                        base["summary"] = event.error
+                        base["resultPreviewJson"] = errorJson
+                        base["rawResultJson"] = errorJson
+                        base["streamMeta"] = streamMeta(entryId, activeRound, kind)
+                    }
+
+                    is AgentEvent.ToolCallRetry -> {
+                        val entryId = toolEntryIdForFollowup(
+                            event.toolName,
+                            event.toolCallId,
+                            consume = false
+                        )
+                        val resolvedToolCallId = resolvedToolCallId(event.toolCallId, entryId)
+                        base["toolCallId"] = resolvedToolCallId
+                        base["entryId"] = entryId
+                        base["cardId"] = entryId
+                        base["roundIndex"] = activeRound.coerceAtLeast(1)
+                        base["displayName"] = displayNameForTool(event.toolName)
+                        base["toolType"] = toolTypeForTool(event.toolName)
+                        base["status"] = "running"
+                        base["success"] = true
+                        base["progress"] = "第 ${event.attempt} 次调用失败，正在重试：${event.error}"
+                        base["streamMeta"] = streamMeta(entryId, activeRound, kind)
+                    }
+
+                    is AgentEvent.SkillActivated -> {
+                        val entryId = "$runId-skill-${event.skillId}"
+                        base["entryId"] = entryId
+                        base["roundIndex"] = activeRound.coerceAtLeast(1)
+                        base["streamMeta"] = streamMeta(entryId, activeRound, kind)
+                    }
+
+                    is AgentEvent.StateChanged,
+                    is AgentEvent.ReflectionCheck,
+                    is AgentEvent.ContextCompacted,
+                    is AgentEvent.Complete,
+                    is AgentEvent.Error -> {
+                        val entryId = "$runId-event-$seq"
+                        base["entryId"] = entryId
+                        base["roundIndex"] = activeRound.coerceAtLeast(1)
+                        base["streamMeta"] = streamMeta(entryId, activeRound, kind)
+                    }
+                }
+                return base
+            }
+
+            try {
+                orchestrator.run(
+                    AgentInput(
+                        userMessage = message,
+                        conversationHistory = history,
+                        context = context
+                    )
+                ).collect { event ->
+                    val eventMap = enrichEventMap(event)
+                    persistAgentEvent(conversationId, runId, eventMap)
+                    when (event) {
+                        is AgentEvent.ThinkingUpdate -> reasoningBuffer.append(event.content)
+                        is AgentEvent.ToolCallStart -> {
+                            val toolCallId = eventMap["toolCallId"]?.toString()
+                                ?: "tool_${toolCalls.size}_${System.currentTimeMillis()}"
+                            toolCalls.add(
+                                ToolCallSnapshot(
+                                    id = toolCallId,
+                                    name = event.toolName,
+                                    arguments = event.arguments
+                                )
+                            )
+                        }
+                        is AgentEvent.ToolCallComplete -> {
+                            toolResults.add(
+                                ToolResultSnapshot(
+                                    id = eventMap["toolCallId"]?.toString().orEmpty(),
+                                    name = event.toolName,
+                                    result = event.result
+                                )
+                            )
+                        }
+                        is AgentEvent.ChatMessage -> {
+                            assistantContent = event.content
+                            if (event.isFinal) {
+                                persistAgentTurnMessages(
+                                    conversationId = conversationId,
+                                    runId = runId,
+                                    userMessage = message,
+                                    assistantContent = assistantContent,
+                                    reasoningContent = reasoningBuffer.toString().takeIf { it.isNotBlank() },
+                                    toolCalls = toolCalls,
+                                    toolResults = toolResults
+                                )
+                            }
+                        }
+                        is AgentEvent.Complete -> {
+                            markAgentRunFinished(
+                                conversationId,
+                                runId,
+                                ConversationEntity.AGENT_STATUS_COMPLETED,
+                                null
+                            )
+                        }
+                        is AgentEvent.Error -> {
                             persistAgentTurnMessages(
                                 conversationId = conversationId,
+                                runId = runId,
                                 userMessage = message,
-                                assistantContent = assistantContent,
+                                assistantContent = event.message,
                                 reasoningContent = reasoningBuffer.toString().takeIf { it.isNotBlank() },
                                 toolCalls = toolCalls,
                                 toolResults = toolResults
                             )
+                            markAgentRunFinished(
+                                conversationId,
+                                runId,
+                                ConversationEntity.AGENT_STATUS_ERROR,
+                                event.message
+                            )
                         }
+                        else -> Unit
                     }
-                    is AgentEvent.Error -> {
-                        persistAgentTurnMessages(
-                            conversationId = conversationId,
-                            userMessage = message,
-                            assistantContent = event.message,
-                            reasoningContent = reasoningBuffer.toString().takeIf { it.isNotBlank() },
-                            toolCalls = toolCalls,
-                            toolResults = toolResults
-                        )
-                    }
-                    else -> Unit
+                    eventSink.success(eventMap)
                 }
+            } catch (e: CancellationException) {
+                markAgentRunFinished(
+                    conversationId,
+                    runId,
+                    ConversationEntity.AGENT_STATUS_CANCELLED,
+                    null
+                )
+                throw e
+            } catch (e: Exception) {
+                val errorMessage = e.message ?: "Agent 运行失败"
+                val errorEvent = AgentEvent.Error(errorMessage)
+                val eventMap = enrichEventMap(errorEvent)
+                persistAgentEvent(conversationId, runId, eventMap)
+                persistAgentTurnMessages(
+                    conversationId = conversationId,
+                    runId = runId,
+                    userMessage = message,
+                    assistantContent = errorMessage,
+                    reasoningContent = reasoningBuffer.toString().takeIf { it.isNotBlank() },
+                    toolCalls = toolCalls,
+                    toolResults = toolResults
+                )
+                markAgentRunFinished(
+                    conversationId,
+                    runId,
+                    ConversationEntity.AGENT_STATUS_ERROR,
+                    errorMessage
+                )
                 eventSink.success(eventMap)
+            } finally {
+                if (currentAgentRunId == runId) {
+                    currentAgentJob = null
+                    currentAgentConversationId = null
+                    currentAgentRunId = null
+                }
             }
         }
 
         return "started"
+    }
+
+    private suspend fun markAgentRunFinished(
+        conversationId: Long?,
+        runId: String,
+        status: String,
+        error: String?
+    ) {
+        if (conversationId == null) return
+        try {
+            conversationDao.finishAgentRun(
+                id = conversationId,
+                runId = runId,
+                status = status,
+                error = error
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("MemCoachChannelBridge", "更新 Agent run 状态失败", e)
+        }
+    }
+
+    private suspend fun markCurrentAgentRunCancelled(reason: String?) {
+        val conversationId = currentAgentConversationId ?: return
+        val runId = currentAgentRunId ?: return
+        markAgentRunFinished(
+            conversationId = conversationId,
+            runId = runId,
+            status = ConversationEntity.AGENT_STATUS_CANCELLED,
+            error = reason
+        )
     }
 
     private suspend fun persistAgentEvent(
@@ -305,6 +636,10 @@ class MemCoachChannelBridge(
     ) {
         if (conversationId == null) return
         val type = event["type"]?.toString() ?: return
+        val seq = event["seq"].asLongOrNull() ?: 0L
+        val entryId = event["entryId"]?.toString()?.takeIf { it.isNotBlank() && it != "null" }
+        val roundIndex = event["roundIndex"].asIntOrNull()
+        val status = event["status"]?.toString()?.takeIf { it.isNotBlank() && it != "null" }
         try {
             agentEventDao.insert(
                 AgentEventEntity(
@@ -312,9 +647,16 @@ class MemCoachChannelBridge(
                     runId = runId,
                     eventType = type,
                     payloadJson = mapToJson(event).toString(),
+                    seq = seq,
+                    entryId = entryId,
+                    roundIndex = roundIndex,
+                    status = status,
                     createdAt = System.currentTimeMillis()
                 )
             )
+            if (seq > 0) {
+                conversationDao.updateAgentLastSeq(conversationId, runId, seq)
+            }
         } catch (e: Exception) {
             android.util.Log.w("MemCoachChannelBridge", "保存 Agent 事件失败", e)
         }
@@ -322,6 +664,7 @@ class MemCoachChannelBridge(
 
     private suspend fun persistAgentTurnMessages(
         conversationId: Long?,
+        runId: String,
         userMessage: String,
         assistantContent: String,
         reasoningContent: String?,
@@ -341,6 +684,9 @@ class MemCoachChannelBridge(
                     content = assistantContent,
                     thinkingContent = reasoningContent,
                     toolCallsJson = toolCallsJson,
+                    runId = runId,
+                    entryId = "$runId-text",
+                    messageStatus = "completed",
                     createdAt = now
                 )
             )
@@ -354,6 +700,9 @@ class MemCoachChannelBridge(
                         toolStatus = ChatMessageEntity.TOOL_STATUS_SUCCESS,
                         toolResult = result.result,
                         toolCallId = result.id.takeIf { it.isNotBlank() },
+                        runId = runId,
+                        entryId = result.id.takeIf { it.isNotBlank() },
+                        messageStatus = "completed",
                         createdAt = now + index + 1
                     )
                 )
@@ -398,6 +747,75 @@ class MemCoachChannelBridge(
                 put(key, value)
             }
         }
+    }
+
+    private fun displayNameForTool(toolName: String): String {
+        return when (toolName) {
+            "exam_question_search" -> "检索真题"
+            "exam_question_get" -> "读取真题"
+            "exam_question_explain" -> "解析真题"
+            "exam_similar_find" -> "查找相似题"
+            "knowledge_search" -> "检索知识点"
+            "knowledge_get" -> "读取知识点"
+            "learning_insight_get" -> "读取学情"
+            "vocabulary_search" -> "检索单词"
+            "vocabulary_add" -> "添加单词"
+            "vocabulary_parse" -> "解析单词"
+            "pdf_query" -> "查询 PDF"
+            else -> toolName.replace('_', ' ')
+        }
+    }
+
+    private fun toolTypeForTool(toolName: String): String {
+        return when {
+            toolName.startsWith("exam_") -> "exam"
+            toolName.startsWith("knowledge_") -> "knowledge"
+            toolName.startsWith("vocabulary_") -> "vocabulary"
+            toolName.startsWith("learning_") -> "insight"
+            toolName.startsWith("pdf_") -> "pdf"
+            else -> "builtin"
+        }
+    }
+
+    private fun extractToolTitle(argsJson: String): String? {
+        if (argsJson.isBlank()) return null
+        return try {
+            JSONObject(argsJson).optString("tool_title").trim().takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun normalizeToolJsonPayload(raw: String): String {
+        val text = raw.trim()
+        if (text.isEmpty()) return JSONObject().toString()
+        return try {
+            when {
+                text.startsWith("{") -> JSONObject(text).toString()
+                text.startsWith("[") -> org.json.JSONArray(text).toString()
+                else -> JSONObject().apply { put("text", text) }.toString()
+            }
+        } catch (_: Exception) {
+            JSONObject().apply { put("text", text) }.toString()
+        }
+    }
+
+    private fun summarizeToolResult(raw: String): String {
+        val text = raw.trim()
+        if (text.isEmpty()) return "工具执行完成"
+        val summary = try {
+            val obj = JSONObject(text)
+            obj.optString("summary")
+                .ifBlank { obj.optString("message") }
+                .ifBlank { obj.optString("error") }
+                .ifBlank { obj.optString("title") }
+        } catch (_: Exception) {
+            ""
+        }.ifBlank { text }
+
+        return summary
+            .replace(Regex("\\s+"), " ")
+            .let { if (it.length > 120) it.take(117) + "..." else it }
     }
 
     /**
@@ -528,14 +946,66 @@ class MemCoachChannelBridge(
         return if (sb.isNotEmpty()) sb.toString().trim() else null
     }
 
-    private fun cancelAgentTurn(): String {
+    private suspend fun cancelAgentTurn(arguments: Map<String, Any?>): String {
+        val requestedConversationId = (arguments["conversationId"] as? Number)?.toLong()
+        val conversationId = currentAgentConversationId ?: requestedConversationId
+        val runId = currentAgentRunId ?: conversationId?.let { id ->
+            conversationDao.getById(id)?.agentRunId
+        }
+        if (conversationId != null && !runId.isNullOrBlank()) {
+            markAgentRunFinished(
+                conversationId = conversationId,
+                runId = runId,
+                status = ConversationEntity.AGENT_STATUS_CANCELLED,
+                error = "用户取消"
+            )
+        }
         currentAgentJob?.cancel()
         currentAgentJob = null
+        currentAgentConversationId = null
+        currentAgentRunId = null
         return "cancelled"
     }
 
-    private fun isAgentRunning(): Map<String, Any?> {
-        return mapOf("running" to (currentAgentJob?.isActive == true))
+    private suspend fun isAgentRunning(arguments: Map<String, Any?>): Map<String, Any?> {
+        val conversationId = (arguments["conversationId"] as? Number)?.toLong()
+        val inMemoryRunning = currentAgentJob?.isActive == true &&
+            (conversationId == null || currentAgentConversationId == conversationId)
+        val conversation = conversationId?.let { id -> conversationDao.getById(id) }
+        val storedStatus = conversation?.agentStatus
+        val storedRunId = conversation?.agentRunId
+
+        if (
+            conversation != null &&
+            storedStatus == ConversationEntity.AGENT_STATUS_RUNNING &&
+            !inMemoryRunning &&
+            !storedRunId.isNullOrBlank()
+        ) {
+            conversationDao.finishAgentRun(
+                id = conversation.id,
+                runId = storedRunId,
+                status = ConversationEntity.AGENT_STATUS_INTERRUPTED,
+                error = "Agent 任务已不在内存，可能是应用进程被系统回收或运行被中断。"
+            )
+        }
+
+        return mapOf(
+            "running" to inMemoryRunning,
+            "conversation_id" to conversationId,
+            "run_id" to storedRunId,
+            "status" to if (
+                storedStatus == ConversationEntity.AGENT_STATUS_RUNNING &&
+                !inMemoryRunning
+            ) {
+                ConversationEntity.AGENT_STATUS_INTERRUPTED
+            } else {
+                storedStatus
+            },
+            "last_seq" to (conversation?.agentLastSeq ?: 0L),
+            "started_at" to conversation?.agentStartedAt,
+            "finished_at" to conversation?.agentFinishedAt,
+            "error" to conversation?.agentError
+        )
     }
 
     private suspend fun compactContext(arguments: Map<String, Any?>): Map<String, Any?> {
@@ -978,6 +1448,12 @@ class MemCoachChannelBridge(
                 "title" to conv.title,
                 "summary" to conv.summary,
                 "message_count" to conv.messageCount,
+                "agent_run_id" to conv.agentRunId,
+                "agent_status" to conv.agentStatus,
+                "agent_last_seq" to conv.agentLastSeq,
+                "agent_started_at" to conv.agentStartedAt,
+                "agent_finished_at" to conv.agentFinishedAt,
+                "agent_error" to conv.agentError,
                 "created_at" to conv.createdAt,
                 "updated_at" to conv.updatedAt
             )
@@ -1001,18 +1477,148 @@ class MemCoachChannelBridge(
                 "tool_result" to msg.toolResult,
                 "tool_call_id" to msg.toolCallId,
                 "tool_calls" to parseToolCallsJson(msg.toolCallsJson),
+                "run_id" to msg.runId,
+                "entry_id" to msg.entryId,
+                "message_status" to msg.messageStatus,
                 "thinking_content" to msg.thinkingContent,
 
                 "thinking_stage" to msg.thinkingStage,
                 "created_at" to msg.createdAt
             )
         }
-        val skillEvents = agentEventDao
-            .getByConversationIdAndType(conversationId, "skill_activated")
-            .mapNotNull { event -> event.toSkillChipMap() }
+        val agentEvents = agentEventDao.getByConversationId(conversationId)
+        val eventChips = agentEvents.mapNotNull { event -> event.toSkillChipMap() } +
+            buildToolChipMaps(agentEvents)
 
-        return (messages + skillEvents).sortedBy { row ->
+        return (messages + eventChips).sortedBy { row ->
             (row["created_at"] as? Number)?.toLong() ?: 0L
+        }
+    }
+
+    private data class ToolChipHistory(
+        val key: String,
+        val runId: String,
+        var toolName: String,
+        var toolCallId: String?,
+        var arguments: String?,
+        var result: String?,
+        var error: String?,
+        var status: String?,
+        var startedAt: Long,
+        var completedAt: Long?
+    )
+
+    private fun buildToolChipMaps(events: List<AgentEventEntity>): List<Map<String, Any?>> {
+        val chips = linkedMapOf<String, ToolChipHistory>()
+        events.forEach { event ->
+            if (event.eventType !in setOf(
+                    "tool_call_start",
+                    "tool_call_retry",
+                    "tool_call_complete",
+                    "tool_call_error"
+                )
+            ) {
+                return@forEach
+            }
+
+            val payload = try {
+                JSONObject(event.payloadJson)
+            } catch (e: Exception) {
+                return@forEach
+            }
+
+            val toolName = payload.optString("toolName").takeIf { it.isNotBlank() }
+                ?: return@forEach
+            val toolCallId = payload.optString("toolCallId").takeIf { it.isNotBlank() }
+            val key = firstNonBlank(
+                event.entryId,
+                payload.optString("entryId"),
+                payload.optString("cardId"),
+                toolCallId
+            ) ?: "${toolName}:${event.id}"
+            val chip = chips.getOrPut(key) {
+                ToolChipHistory(
+                    key = key,
+                    runId = event.runId,
+                    toolName = toolName,
+                    toolCallId = toolCallId,
+                    arguments = null,
+                    result = null,
+                    error = null,
+                    status = null,
+                    startedAt = event.createdAt,
+                    completedAt = null
+                )
+            }
+
+            chip.toolName = toolName
+            if (chip.toolCallId.isNullOrBlank()) chip.toolCallId = toolCallId
+            chip.startedAt = minOf(chip.startedAt, event.createdAt)
+            chip.arguments = firstNonBlank(
+                chip.arguments,
+                payload.optString("argsJson"),
+                payload.optString("args"),
+                payload.optString("arguments")
+            )
+
+            when (event.eventType) {
+                "tool_call_start" -> {
+                    chip.status = "running"
+                }
+
+                "tool_call_retry" -> {
+                    chip.status = "running"
+                }
+
+                "tool_call_complete" -> {
+                    chip.status = "success"
+                    chip.result = firstNonBlank(
+                        payload.optString("rawResultJson"),
+                        payload.optString("resultPreviewJson"),
+                        payload.optString("result"),
+                        payload.optString("summary"),
+                        chip.result
+                    )
+                    chip.completedAt = event.createdAt
+                }
+
+                "tool_call_error" -> {
+                    chip.status = "error"
+                    chip.error = firstNonBlank(
+                        payload.optString("error"),
+                        payload.optString("summary"),
+                        chip.error
+                    )
+                    chip.result = firstNonBlank(
+                        payload.optString("rawResultJson"),
+                        payload.optString("resultPreviewJson"),
+                        payload.optString("result"),
+                        chip.result
+                    )
+                    chip.completedAt = event.createdAt
+                }
+            }
+        }
+
+        return chips.values.map { chip ->
+            val durationMs = chip.completedAt?.let { completed ->
+                (completed - chip.startedAt).coerceAtLeast(0L)
+            }
+            mapOf(
+                "id" to chip.key,
+                "role" to "tool_chip",
+                "content" to chip.toolName,
+                "tool_name" to chip.toolName,
+                "tool_status" to chip.status,
+                "tool_call_id" to chip.toolCallId,
+                "run_id" to chip.runId,
+                "entry_id" to chip.key,
+                "tool_arguments" to chip.arguments,
+                "tool_result" to chip.result,
+                "tool_error" to chip.error,
+                "tool_duration_ms" to durationMs,
+                "created_at" to chip.startedAt
+            )
         }
     }
 
@@ -1032,6 +1638,31 @@ class MemCoachChannelBridge(
             )
         } catch (e: Exception) {
             null
+        }
+    }
+
+    private fun firstNonBlank(vararg values: String?): String? {
+        return values.firstOrNull { value ->
+            !value.isNullOrBlank() && value != "null"
+        }
+    }
+
+    private fun Any?.asLongOrNull(): Long? {
+        return when (this) {
+            is Long -> this
+            is Int -> this.toLong()
+            is Number -> this.toLong()
+            is String -> this.toLongOrNull()
+            else -> null
+        }
+    }
+
+    private fun Any?.asIntOrNull(): Int? {
+        return when (this) {
+            is Int -> this
+            is Number -> this.toInt()
+            is String -> this.toIntOrNull()
+            else -> null
         }
     }
     
@@ -1145,6 +1776,9 @@ class MemCoachChannelBridge(
         val toolResult = arguments["toolResult"] as? String
         val toolCallId = arguments["toolCallId"] as? String
         val toolCallsJson = normalizeToolCallsJson(arguments["toolCalls"])
+        val runId = arguments["runId"] as? String
+        val entryId = arguments["entryId"] as? String
+        val messageStatus = arguments["messageStatus"] as? String
         
         val message = cn.com.memcoach.data.entity.ChatMessageEntity(
 
@@ -1157,6 +1791,9 @@ class MemCoachChannelBridge(
             toolResult = toolResult,
             toolCallId = toolCallId,
             toolCallsJson = toolCallsJson,
+            runId = runId,
+            entryId = entryId,
+            messageStatus = messageStatus,
             createdAt = System.currentTimeMillis()
 
         )

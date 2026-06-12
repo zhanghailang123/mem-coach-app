@@ -25,7 +25,9 @@ import androidx.room.PrimaryKey
         Index("conversation_id"),
         Index("run_id"),
         Index("event_type"),
-        Index("created_at")
+        Index("created_at"),
+        Index("seq"),
+        Index("entry_id")
     ]
 )
 data class AgentEventEntity(
@@ -44,6 +46,18 @@ data class AgentEventEntity(
 
     @ColumnInfo(name = "payload_json")
     val payloadJson: String,
+
+    @ColumnInfo(name = "seq")
+    val seq: Long = 0,
+
+    @ColumnInfo(name = "entry_id")
+    val entryId: String? = null,
+
+    @ColumnInfo(name = "round_index")
+    val roundIndex: Int? = null,
+
+    @ColumnInfo(name = "status")
+    val status: String? = null,
 
     @ColumnInfo(name = "created_at")
     val createdAt: Long = System.currentTimeMillis()

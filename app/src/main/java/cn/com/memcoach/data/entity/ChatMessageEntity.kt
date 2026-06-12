@@ -25,7 +25,9 @@ import androidx.room.PrimaryKey
     indices = [
         Index("conversation_id"),
         Index("role"),
-        Index("created_at")
+        Index("created_at"),
+        Index("run_id"),
+        Index("entry_id")
     ]
 )
 data class ChatMessageEntity(
@@ -56,6 +58,15 @@ data class ChatMessageEntity(
 
     @ColumnInfo(name = "tool_calls_json")
     val toolCallsJson: String? = null,
+
+    @ColumnInfo(name = "run_id")
+    val runId: String? = null,
+
+    @ColumnInfo(name = "entry_id")
+    val entryId: String? = null,
+
+    @ColumnInfo(name = "message_status")
+    val messageStatus: String? = null,
 
     @ColumnInfo(name = "thinking_content")
 

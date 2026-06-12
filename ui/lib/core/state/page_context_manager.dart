@@ -21,6 +21,14 @@ class PageContextManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  int _refreshRequestCount = 0;
+  int get refreshRequestCount => _refreshRequestCount;
+
+  /// 请求全局数据刷新（例如 AI 聊天关闭后触发同步）
+  void requestRefresh() {
+    _refreshRequestCount++;
+    notifyListeners();
+  }
   static final PageContextManager _instance = PageContextManager._internal();
   factory PageContextManager() => _instance;
   PageContextManager._internal();

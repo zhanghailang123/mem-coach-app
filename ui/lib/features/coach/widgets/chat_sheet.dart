@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/state/page_context_manager.dart';
 import '../../../core/widgets/ai_sparkle_logo.dart';
 import '../../../core/native/mem_coach_native_bridge.dart';
 import 'markdown_bubble.dart';
@@ -111,9 +112,12 @@ class _ChatSheetState extends State<ChatSheet> {
 
   bool _isAutoCompleting = false;
 
+  Map<String, dynamic>? _activePageContext;
+
   @override
   void initState() {
     super.initState();
+    _activePageContext = widget.pageContext;
     final initialText = widget.initialText?.trim();
     if (initialText != null && initialText.isNotEmpty) {
       _controller.text = initialText;
@@ -153,8 +157,21 @@ class _ChatSheetState extends State<ChatSheet> {
 
   Future<void> _syncAgentRunningState() async {
     try {
-      final running = await MemCoachNativeBridge.isAgentRunning();
-      if (!mounted || !running) return;
+      final state = await MemCoachNativeBridge.getAgentRunningState(
+        conversationId: _conversationId,
+      );
+      final running =
+          state['running'] == true || state['running']?.toString() == 'true';
+      final status = state['status']?.toString();
+      if (!mounted) return;
+      if (!running) {
+        if (status == 'interrupted') {
+          setState(() {
+            _status = '上次生成已中断，可以继续提问';
+          });
+        }
+        return;
+      }
       setState(() {
         _running = true;
         _status = 'Agent 正在后台生成...';
@@ -163,7 +180,8 @@ class _ChatSheetState extends State<ChatSheet> {
           _thinkingText = _thinkingPlaceholder;
         }
         _thinkingStage = 1;
-        _thinkingStartTime ??= DateTime.now().millisecondsSinceEpoch;
+        _thinkingStartTime ??= _nullableInt(state['started_at']) ??
+            DateTime.now().millisecondsSinceEpoch;
       });
     } catch (_) {
       // 状态查询失败不影响聊天框使用，后续事件仍会正常接入。
@@ -208,15 +226,8 @@ class _ChatSheetState extends State<ChatSheet> {
         for (final msg in messages) {
           final role = msg['role'] as String? ?? 'user';
           final content = msg['content'] as String? ?? '';
-          final timestampStr = msg['timestamp'] as String?;
-          DateTime? timestamp;
-          if (timestampStr != null) {
-            try {
-              timestamp = DateTime.parse(timestampStr);
-            } catch (_) {
-              timestamp = null;
-            }
-          }
+          final timestamp =
+              _parseMessageTimestamp(msg['timestamp'] ?? msg['created_at']);
           final toolCallsRaw = msg['tool_calls'];
           final toolCalls = toolCallsRaw is List
               ? toolCallsRaw
@@ -229,6 +240,7 @@ class _ChatSheetState extends State<ChatSheet> {
             role: switch (role) {
               'assistant' => _ChatRole.assistant,
               'tool' => _ChatRole.tool,
+              'tool_chip' => _ChatRole.toolChip,
               'skill_chip' => _ChatRole.skillChip,
               'system' => _ChatRole.system,
               _ => _ChatRole.user,
@@ -238,6 +250,16 @@ class _ChatSheetState extends State<ChatSheet> {
               msg['reasoning_content'] ?? msg['thinking_content'],
             ),
             toolCallId: msg['tool_call_id']?.toString(),
+            toolArguments: _nullableMessageText(
+              msg['tool_arguments'] ?? msg['arguments'],
+            ),
+            toolResult: _nullableMessageText(
+              msg['tool_result'] ?? msg['result'],
+            ),
+            toolError: _nullableMessageText(
+              msg['tool_error'] ?? msg['error'],
+            ),
+            toolDurationMs: _nullableInt(msg['tool_duration_ms']),
             skillId: _nullableMessageText(msg['skill_id']),
             skillConfidence: msg['skill_confidence'] is num
                 ? (msg['skill_confidence'] as num).toDouble()
@@ -269,7 +291,7 @@ class _ChatSheetState extends State<ChatSheet> {
         (event.type == 'chat_message' && event.isFinal != true);
 
     // 使用 Reducer 模式检查事件是否需要处理
-    final seq = event.raw['seq'] as int?;
+    final seq = event.seq;
     final reduceResult =
         _agentStreamReducer.reduce(_agentStreamState, event.type, seq);
     if (!reduceResult.accepted) {
@@ -335,18 +357,19 @@ class _ChatSheetState extends State<ChatSheet> {
             content: event.toolName ?? 'unknown',
             timestamp: DateTime.now(),
             toolCallId: toolCallId,
-            toolArguments: event.arguments,
+            toolArguments: _eventToolArguments(event),
           ));
 
           _currentTurnToolCalls.add(_ToolCallRecord(
             id: toolCallId,
             name: event.toolName ?? 'unknown',
-            arguments: event.arguments ?? '{}',
+            arguments: _eventToolArguments(event) ?? '{}',
           ));
 
           break;
         case 'tool_call_complete':
           _status = '工具调用完成：${event.toolName ?? 'unknown'}';
+          final toolResult = _eventToolResult(event) ?? '';
           // 更新最后一个工具胶囊，显示耗时
           for (var i = _messages.length - 1; i >= 0; i--) {
             if (_messages[i].role == _ChatRole.toolChip &&
@@ -354,7 +377,7 @@ class _ChatSheetState extends State<ChatSheet> {
               final startTime = _messages[i].timestamp ?? DateTime.now();
               final duration = DateTime.now().difference(startTime);
               _messages[i] = _messages[i].copyWith(
-                toolResult: event.result ?? '',
+                toolResult: toolResult,
                 toolDurationMs: duration.inMilliseconds,
               );
               break;
@@ -364,11 +387,15 @@ class _ChatSheetState extends State<ChatSheet> {
           if (event.toolCallId != null) {
             _messages.add(_ChatMessage(
               role: _ChatRole.tool,
-              content: event.result ?? '',
+              content: toolResult,
               toolCallId: event.toolCallId,
               timestamp: DateTime.now(),
             ));
           }
+          break;
+        case 'tool_call_retry':
+          _status = event.raw['progress']?.toString() ??
+              '工具调用重试：${event.toolName ?? 'unknown'}';
           break;
         case 'tool_call_error':
           _status = '工具调用失败：${event.toolName ?? 'unknown'}';
@@ -379,6 +406,7 @@ class _ChatSheetState extends State<ChatSheet> {
               final duration = DateTime.now().difference(startTime);
               _messages[i] = _messages[i].copyWith(
                 toolError: event.error ?? '工具调用失败',
+                toolResult: _eventToolResult(event),
                 toolDurationMs: duration.inMilliseconds,
               );
               break;
@@ -441,6 +469,29 @@ class _ChatSheetState extends State<ChatSheet> {
         message.toolDurationMs == null &&
         message.toolResult == null &&
         message.toolError == null;
+  }
+
+  String? _eventToolArguments(AgentNativeEvent event) {
+    return _firstNonBlank([event.argsJson, event.arguments]);
+  }
+
+  String? _eventToolResult(AgentNativeEvent event) {
+    return _firstNonBlank([
+      event.rawResultJson,
+      event.resultPreviewJson,
+      event.result,
+      event.summary,
+    ]);
+  }
+
+  String? _firstNonBlank(List<String?> values) {
+    for (final value in values) {
+      final text = value?.trim();
+      if (text != null && text.isNotEmpty && text != 'null') {
+        return text;
+      }
+    }
+    return null;
   }
 
   bool _hasCurrentTurnSkillChip(_ActiveSkill skill) {
@@ -524,6 +575,7 @@ class _ChatSheetState extends State<ChatSheet> {
     _controller.dispose();
 
     _scrollController.dispose();
+    PageContextManager().requestRefresh(); // 销毁聊天框时发送全局数据刷新广播
     super.dispose();
   }
 
@@ -621,7 +673,7 @@ class _ChatSheetState extends State<ChatSheet> {
         message: text,
         conversationId: conversationId,
         history: history,
-        context: widget.pageContext ?? {},
+        context: _activePageContext ?? {},
       );
     } catch (error) {
       if (!mounted) return;
@@ -637,7 +689,9 @@ class _ChatSheetState extends State<ChatSheet> {
     if (!_running) return;
     setState(() => _status = '正在取消...');
     try {
-      await MemCoachNativeBridge.cancelAgentTurn();
+      await MemCoachNativeBridge.cancelAgentTurn(
+        conversationId: _conversationId,
+      );
       if (!mounted) return;
       setState(() {
         _running = false;
@@ -750,6 +804,24 @@ class _ChatSheetState extends State<ChatSheet> {
     final text = value?.toString().trim();
     if (text == null || text.isEmpty || text == 'null') return null;
     return text;
+  }
+
+  int? _nullableInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  DateTime? _parseMessageTimestamp(Object? value) {
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    if (value is num) {
+      return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+    }
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty || text == 'null') return null;
+    final millis = int.tryParse(text);
+    if (millis != null) return DateTime.fromMillisecondsSinceEpoch(millis);
+    return DateTime.tryParse(text);
   }
 
   void _attachThinkingToLastAssistantMessage() {
@@ -1461,6 +1533,9 @@ class _ChatSheetState extends State<ChatSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // ── 关联上下文提示胶囊 ──
+          if (_activePageContext != null && _activePageContext!.isNotEmpty)
+            _buildContextChip(),
           // ── 第一行：功能按钮 ──
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -1550,6 +1625,80 @@ class _ChatSheetState extends State<ChatSheet> {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContextChip() {
+    if (_activePageContext == null || _activePageContext!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final type = _activePageContext!['type']?.toString();
+    
+    String label = '关联上下文';
+    IconData icon = Icons.link_rounded;
+    Color color = Theme.of(context).colorScheme.primary;
+
+    if (type == 'vocabulary') {
+      final word = _activePageContext!['word']?.toString() ?? '';
+      label = '关联生词：$word';
+      icon = Icons.book_rounded;
+      color = const Color(0xFF5B5FEF);
+    } else if (type == 'question') {
+      final stem = _activePageContext!['stem']?.toString() ?? '';
+      final displayStem = stem.length > 22 ? '${stem.substring(0, 22)}...' : stem;
+      label = '关联真题：$displayStem';
+      icon = Icons.quiz_rounded;
+      color = const Color(0xFF20B486);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, left: 4, right: 4),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: color.withValues(alpha: 0.25),
+                width: 1.0,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 14, color: color),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _activePageContext = null;
+                    });
+                  },
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 14,
+                    color: color.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
         ],
       ),
     );

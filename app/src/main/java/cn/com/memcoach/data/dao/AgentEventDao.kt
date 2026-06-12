@@ -35,6 +35,17 @@ interface AgentEventDao {
         eventType: String
     ): List<AgentEventEntity>
 
+    /** 获取指定会话中某个序号之后的事件，用于聊天框重开后的增量恢复 */
+    @Query("""
+        SELECT * FROM agent_events
+        WHERE conversation_id = :conversationId AND seq > :afterSeq
+        ORDER BY seq ASC, created_at ASC
+    """)
+    suspend fun getByConversationIdAfterSeq(
+        conversationId: Long,
+        afterSeq: Long
+    ): List<AgentEventEntity>
+
     /** 删除指定会话的事件 */
     @Query("DELETE FROM agent_events WHERE conversation_id = :conversationId")
     suspend fun deleteByConversationId(conversationId: Long)

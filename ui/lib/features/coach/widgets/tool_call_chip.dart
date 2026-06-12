@@ -116,9 +116,12 @@ class ToolCallChip extends StatelessWidget {
   void _showToolDetails(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final formattedArguments = _formatPayload(arguments);
-    final formattedResult = _formatPayload(error ?? result);
+    final formattedError = _formatPayload(error);
+    final formattedResult = _formatPayload(result);
     final hasError = error != null && error!.trim().isNotEmpty;
     final isSkill = toolName.startsWith('skill:');
+    final shouldShowResult =
+        formattedResult != null && formattedResult != formattedError;
 
     showModalBottomSheet(
       context: context,
@@ -173,10 +176,17 @@ class ToolCallChip extends StatelessWidget {
                   const SizedBox(height: 16),
                   _buildPayloadSection(context, '输入参数', formattedArguments),
                 ],
-                if (formattedResult != null) ...[
+                if (formattedError != null) ...[
+                  const SizedBox(height: 16),
+                  _buildPayloadSection(context, '错误信息', formattedError),
+                ],
+                if (shouldShowResult) ...[
                   const SizedBox(height: 16),
                   _buildPayloadSection(
-                      context, hasError ? '错误信息' : '输出结果', formattedResult),
+                    context,
+                    isSkill ? '触发原因' : '输出结果',
+                    formattedResult,
+                  ),
                 ],
               ],
             ),

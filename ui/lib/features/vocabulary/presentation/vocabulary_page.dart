@@ -19,6 +19,14 @@ class _VocabularyPageState extends State<VocabularyPage> {
   String _searchQuery = ''; // 搜索词
   String _selectedStatus = 'all'; // 当前选中的过滤状态: all, review, learning, mastered
   final TextEditingController _searchController = TextEditingController();
+  int _lastRefreshRequestCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastRefreshRequestCount = PageContextManager().refreshRequestCount;
+    PageContextManager().addListener(_onContextManagerChanged);
+  }
 
   // 触发页面整体数据重新加载
   void _triggerRefresh() {
@@ -27,8 +35,17 @@ class _VocabularyPageState extends State<VocabularyPage> {
     });
   }
 
+  void _onContextManagerChanged() {
+    final currentCount = PageContextManager().refreshRequestCount;
+    if (currentCount != _lastRefreshRequestCount) {
+      _lastRefreshRequestCount = currentCount;
+      _triggerRefresh();
+    }
+  }
+
   @override
   void dispose() {
+    PageContextManager().removeListener(_onContextManagerChanged);
     _searchController.dispose();
     super.dispose();
   }

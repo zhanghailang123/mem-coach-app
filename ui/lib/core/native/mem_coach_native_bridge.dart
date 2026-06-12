@@ -51,14 +51,25 @@ class MemCoachNativeBridge {
     return result ?? '';
   }
 
-  static Future<void> cancelAgentTurn() {
-    return _methodChannel.invokeMethod<void>('agent.cancelTurn');
+  static Future<void> cancelAgentTurn({int? conversationId}) {
+    return _methodChannel.invokeMethod<void>('agent.cancelTurn', {
+      if (conversationId != null) 'conversationId': conversationId,
+    });
   }
 
-  static Future<bool> isAgentRunning() async {
+  static Future<Map<String, dynamic>> getAgentRunningState({
+    int? conversationId,
+  }) async {
     final result = await _methodChannel
-        .invokeMapMethod<String, dynamic>('agent.isRunning');
-    final running = result?['running'];
+        .invokeMapMethod<String, dynamic>('agent.isRunning', {
+      if (conversationId != null) 'conversationId': conversationId,
+    });
+    return result ?? {};
+  }
+
+  static Future<bool> isAgentRunning({int? conversationId}) async {
+    final result = await getAgentRunningState(conversationId: conversationId);
+    final running = result['running'];
     return running == true || running?.toString() == 'true';
   }
 
@@ -265,6 +276,9 @@ class MemCoachNativeBridge {
     String? toolStatus,
     String? toolResult,
     String? toolCallId,
+    String? runId,
+    String? entryId,
+    String? messageStatus,
     List<Map<String, dynamic>> toolCalls = const [],
   }) async {
     final result = await _methodChannel
@@ -277,6 +291,9 @@ class MemCoachNativeBridge {
       if (toolStatus != null) 'toolStatus': toolStatus,
       if (toolResult != null) 'toolResult': toolResult,
       if (toolCallId != null) 'toolCallId': toolCallId,
+      if (runId != null) 'runId': runId,
+      if (entryId != null) 'entryId': entryId,
+      if (messageStatus != null) 'messageStatus': messageStatus,
       if (toolCalls.isNotEmpty) 'toolCalls': toolCalls,
     });
 
@@ -318,11 +335,20 @@ class AgentNativeEvent {
     required this.type,
     this.content,
     this.round,
+    this.seq,
+    this.taskId,
+    this.entryId,
+    this.roundIndex,
     this.toolName,
     this.arguments,
+    this.argsJson,
     this.result,
+    this.resultPreviewJson,
+    this.rawResultJson,
     this.error,
     this.toolCallId,
+    this.status,
+    this.summary,
     this.isFinal = false,
     this.state,
     this.stateName,
@@ -336,11 +362,20 @@ class AgentNativeEvent {
   final String type;
   final String? content;
   final int? round;
+  final int? seq;
+  final String? taskId;
+  final String? entryId;
+  final int? roundIndex;
   final String? toolName;
   final String? arguments;
+  final String? argsJson;
   final String? result;
+  final String? resultPreviewJson;
+  final String? rawResultJson;
   final String? error;
   final String? toolCallId;
+  final String? status;
+  final String? summary;
   final bool isFinal;
 
   final String? state;
@@ -355,14 +390,22 @@ class AgentNativeEvent {
     return AgentNativeEvent(
       type: json['type'] as String? ?? 'unknown',
       content: json['content']?.toString(),
-      round: json['round'] is int
-          ? json['round'] as int
-          : int.tryParse(json['round']?.toString() ?? ''),
+      round: _asInt(json['round']),
+      seq: _asInt(json['seq']),
+      taskId: json['taskId']?.toString(),
+      entryId: json['entryId']?.toString(),
+      roundIndex: _asInt(json['roundIndex']),
       toolName: json['toolName']?.toString(),
       arguments: json['arguments']?.toString(),
+      argsJson:
+          (json['argsJson'] ?? json['args'] ?? json['arguments'])?.toString(),
       result: json['result']?.toString(),
+      resultPreviewJson: json['resultPreviewJson']?.toString(),
+      rawResultJson: json['rawResultJson']?.toString(),
       error: json['error']?.toString(),
       toolCallId: json['toolCallId']?.toString(),
+      status: json['status']?.toString(),
+      summary: json['summary']?.toString(),
       isFinal: json['isFinal'] == true || json['isFinal']?.toString() == 'true',
       state: json['state']?.toString(),
       stateName: json['stateName']?.toString(),
@@ -382,5 +425,11 @@ class AgentNativeEvent {
       error: message,
       raw: {'type': 'error', 'error': message},
     );
+  }
+
+  static int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
   }
 }

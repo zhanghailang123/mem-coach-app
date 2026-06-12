@@ -90,21 +90,11 @@ class _QuickActionGridState extends State<QuickActionGrid> {
           ),
         );
         break;
-      case 2: // 模拟考试 - 跳转到模拟考试练习
-        PracticePage.navigate(
-          context,
-          title: '模拟考试',
-          subject: 'logic',
-          count: 10,
-        );
+      case 2: // 模拟考试 - 弹出科目选择
+        _showSubjectPicker(context, title: '模拟考试', count: 10);
         break;
-      case 3: // 背诵模式 - 跳转到背诵练习
-        PracticePage.navigate(
-          context,
-          title: '背诵模式',
-          subject: 'logic',
-          count: 5,
-        );
+      case 3: // 背诵模式 - 弹出科目选择
+        _showSubjectPicker(context, title: '背诵模式', count: 5);
         break;
     }
   }
@@ -268,6 +258,77 @@ class _QuickActionGridState extends State<QuickActionGrid> {
   void _showFeatureNotAvailable(BuildContext context, String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('$feature 功能即将上线')),
+    );
+  }
+
+  void _showSubjectPicker(BuildContext context, {required String title, required int count}) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      showDragHandle: true,
+      builder: (context) {
+        final options = [
+          ('logic', '逻辑', Icons.account_tree_outlined, const Color(0xFF20B486)),
+          ('math', '数学', Icons.functions_rounded, const Color(0xFFFF9F1C)),
+          ('writing', '写作', Icons.edit_note_rounded, const Color(0xFFEF476F)),
+        ];
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                child: Text(
+                  '选择 $title 科目',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const Divider(),
+              ...options.map((opt) {
+                final id = opt.$1;
+                final name = opt.$2;
+                final icon = opt.$3;
+                final color = opt.$4;
+                return ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, color: color),
+                  ),
+                  title: Text(
+                    name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () {
+                    Navigator.pop(context);
+                    PracticePage.navigate(
+                      context,
+                      title: '$name$title',
+                      subject: id,
+                      count: count,
+                    );
+                  },
+                );
+              }),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
     );
   }
 }
