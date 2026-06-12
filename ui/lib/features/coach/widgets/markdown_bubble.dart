@@ -39,6 +39,7 @@ class MarkdownBubble extends StatelessWidget {
                     isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
                   Container(
+                    width: isUser ? null : double.infinity,
                     margin: const EdgeInsets.only(bottom: 4),
                     decoration: BoxDecoration(
                       color: isUser
@@ -187,10 +188,13 @@ class MarkdownBubble extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: MarkdownMathView(
-        data: content,
-        baseFontSize: 15,
-        mathColor: Theme.of(context).colorScheme.primary,
+      child: SizedBox(
+        width: double.infinity,
+        child: MarkdownMathView(
+          data: content,
+          baseFontSize: 15,
+          mathColor: Theme.of(context).colorScheme.primary,
+        ),
       ),
     );
   }

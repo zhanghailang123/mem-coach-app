@@ -1598,6 +1598,7 @@ class _ConversationHistorySheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SafeArea(
       child: conversations.isEmpty
           ? Padding(
@@ -1606,14 +1607,17 @@ class _ConversationHistorySheet extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.history_toggle_off_rounded,
-                      size: 42, color: Colors.black.withValues(alpha: 0.25)),
+                      size: 42,
+                      color: isDark
+                          ? Colors.white30
+                          : Colors.black.withValues(alpha: 0.25)),
                   const SizedBox(height: 12),
                   const Text('暂无历史会话',
                       style:
                           TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 6),
-                  const Text('开始一次对话后，会在这里显示历史记录。',
-                      style: TextStyle(color: Colors.black54)),
+                  Text('开始一次对话后，会在这里显示历史记录。',
+                      style: TextStyle(color: isDark ? Colors.white54 : Colors.black54)),
                 ],
               ),
             )
@@ -1642,7 +1646,9 @@ class _ConversationHistorySheet extends StatelessWidget {
                   leading: CircleAvatar(
                     backgroundColor: isCurrent
                         ? const Color(0xFF5B5FEF)
-                        : const Color(0xFFF4F6FA),
+                        : (isDark
+                            ? const Color(0xFF2C2C35)
+                            : const Color(0xFFF4F6FA)),
                     child: Icon(
                       isCurrent
                           ? Icons.chat_bubble_rounded

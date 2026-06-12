@@ -119,6 +119,7 @@ class _MemorizeCardState extends State<MemorizeCard> {
   @override
   Widget build(BuildContext context) {
     final d = widget.data;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return CoachShellCard(
       child: Column(
@@ -128,7 +129,10 @@ class _MemorizeCardState extends State<MemorizeCard> {
           Text(d.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
           if (d.topic != null && d.topic!.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(d.topic!, style: const TextStyle(color: Colors.black54, fontSize: 13)),
+            Text(d.topic!,
+                style: TextStyle(
+                    color: isDark ? Colors.white54 : Colors.black54,
+                    fontSize: 13)),
           ],
           const SizedBox(height: 16),
 
@@ -137,7 +141,7 @@ class _MemorizeCardState extends State<MemorizeCard> {
             width: double.infinity,
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: const Color(0xFFF7F8FC),
+              color: isDark ? const Color(0xFF13131A) : const Color(0xFFF7F8FC),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(

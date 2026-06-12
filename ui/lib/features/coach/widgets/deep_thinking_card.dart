@@ -71,7 +71,8 @@ class _DeepThinkingCardState extends State<DeepThinkingCard>
     super.initState();
     _hasAutoCollapsedForCurrentCompletion = _shouldAutoCollapse(widget);
     // 默认折叠（除非已完成且不自动折叠）
-    _isCollapsed = widget.isCollapsible && (widget.stage != 4 || _hasAutoCollapsedForCurrentCompletion);
+    _isCollapsed = widget.isCollapsible &&
+        (widget.stage != 4 || _hasAutoCollapsedForCurrentCompletion);
     _collapseController = AnimationController(
       vsync: this,
       duration: _collapseDuration,
@@ -100,8 +101,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard>
         !_isCompletedStage(oldWidget.stage) && _isCompletedStage(widget.stage);
     final becameThinking =
         _isCompletedStage(oldWidget.stage) && !_isCompletedStage(widget.stage);
-    final completionSettled =
-        _shouldAutoCollapse(widget) &&
+    final completionSettled = _shouldAutoCollapse(widget) &&
         (!_shouldAutoCollapse(oldWidget) ||
             oldWidget.isLoading != widget.isLoading ||
             oldWidget.isCollapsible != widget.isCollapsible ||
@@ -136,15 +136,15 @@ class _DeepThinkingCardState extends State<DeepThinkingCard>
     final nextElapsedSeconds = widget.startTime == null
         ? 0
         : (widget.endTime != null
-                    ? DateTime.fromMillisecondsSinceEpoch(
-                        widget.endTime!,
-                      ).difference(
-                        DateTime.fromMillisecondsSinceEpoch(widget.startTime!),
-                      )
-                    : DateTime.now().difference(
-                        DateTime.fromMillisecondsSinceEpoch(widget.startTime!),
-                      ))
-                .inSeconds;
+                ? DateTime.fromMillisecondsSinceEpoch(
+                    widget.endTime!,
+                  ).difference(
+                    DateTime.fromMillisecondsSinceEpoch(widget.startTime!),
+                  )
+                : DateTime.now().difference(
+                    DateTime.fromMillisecondsSinceEpoch(widget.startTime!),
+                  ))
+            .inSeconds;
 
     if (nextElapsedSeconds == _elapsedSeconds) return;
 
@@ -298,6 +298,20 @@ class _DeepThinkingCardState extends State<DeepThinkingCard>
     }
   }
 
+  String _softWrapLongText(String text) {
+    return text.replaceAllMapped(RegExp(r'\S{28,}'), (match) {
+      final value = match.group(0) ?? '';
+      if (value.isEmpty) return value;
+      final buffer = StringBuffer();
+      for (var i = 0; i < value.length; i++) {
+        buffer.write(value[i]);
+        final shouldBreak = (i + 1) % 16 == 0 && i != value.length - 1;
+        if (shouldBreak) buffer.write('\u200B');
+      }
+      return buffer.toString();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool hasContent = widget.thinkingText.isNotEmpty;
@@ -389,7 +403,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard>
               border: Border(
                 left: BorderSide(
                   color: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.white.withOpacity(0.15)
+                      ? Colors.white.withValues(alpha: 0.15)
                       : const Color(0x1A000000),
                   width: 1.0,
                 ),
@@ -402,19 +416,19 @@ class _DeepThinkingCardState extends State<DeepThinkingCard>
                     _checkOverflow();
                     final isUserDrivenUpdate =
                         (notification is ScrollUpdateNotification &&
-                            notification.dragDetails != null) ||
-                        (notification is OverscrollNotification &&
-                            notification.dragDetails != null);
+                                notification.dragDetails != null) ||
+                            (notification is OverscrollNotification &&
+                                notification.dragDetails != null);
                     if (isUserDrivenUpdate) {
                       _autoScrollToLatest =
                           (notification.metrics.maxScrollExtent -
-                                  notification.metrics.pixels)
-                              .abs() <=
+                                      notification.metrics.pixels)
+                                  .abs() <=
                               _bottomTolerance;
                     } else if (notification is ScrollEndNotification &&
                         (notification.metrics.maxScrollExtent -
-                                notification.metrics.pixels)
-                            .abs() <=
+                                    notification.metrics.pixels)
+                                .abs() <=
                             _bottomTolerance) {
                       _autoScrollToLatest = true;
                     }
@@ -429,7 +443,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            widget.thinkingText,
+                            _softWrapLongText(widget.thinkingText),
                             style: TextStyle(
                               color: widget.textColor,
                               fontSize: 12,
@@ -556,9 +570,8 @@ class _ThinkingStatus extends StatelessWidget {
           width: 6,
           height: 6,
           decoration: BoxDecoration(
-            color: isCompleted
-                ? const Color(0xFF4CAF50)
-                : const Color(0xFF2196F3),
+            color:
+                isCompleted ? const Color(0xFF4CAF50) : const Color(0xFF2196F3),
             shape: BoxShape.circle,
           ),
         ),

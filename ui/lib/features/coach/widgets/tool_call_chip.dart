@@ -35,53 +35,82 @@ class ToolCallChip extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => _showToolDetails(context),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF3A3A3C),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    hasError
-                        ? Icons.error_outline_rounded
-                        : isSkill
-                            ? Icons.psychology_alt_rounded
-                            : Icons.description_outlined,
-                    size: 16,
-                    color: accentColor,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final availableWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : MediaQuery.of(context).size.width - 32;
+
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: availableWidth),
+              child: GestureDetector(
+                onTap: () => _showToolDetails(context),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3A3A3C),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _formatToolName(toolName),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                    ),
-                  ),
-                  if (duration != null || isRunning) ...[
-                    const SizedBox(width: 8),
-                    Text(
-                      isRunning ? '...' : _formatDuration(duration!),
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.6),
-                        fontSize: 12,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        hasError
+                            ? Icons.error_outline_rounded
+                            : isSkill
+                                ? Icons.psychology_alt_rounded
+                                : Icons.description_outlined,
+                        size: 16,
+                        color: accentColor,
                       ),
-                    ),
-                  ],
-                ],
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          _formatToolName(toolName),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      if (duration != null || isRunning) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          isRunning ? '...' : _formatDuration(duration!),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
+  }
+
+  String _softWrapLongText(String text) {
+    return text.replaceAllMapped(RegExp(r'\S{28,}'), (match) {
+      final value = match.group(0) ?? '';
+      if (value.isEmpty) return value;
+      final buffer = StringBuffer();
+      for (var i = 0; i < value.length; i++) {
+        buffer.write(value[i]);
+        final shouldBreak = (i + 1) % 16 == 0 && i != value.length - 1;
+        if (shouldBreak) buffer.write('\u200B');
+      }
+      return buffer.toString();
+    });
   }
 
   void _showToolDetails(BuildContext context) {
@@ -232,7 +261,7 @@ class ToolCallChip extends StatelessWidget {
             ),
           ),
           child: SelectableText(
-            value,
+            _softWrapLongText(value),
             style: TextStyle(
               color: Theme.of(context)
                   .colorScheme

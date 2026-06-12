@@ -46,6 +46,7 @@ class ReasoningChainCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final d = data ?? const ReasoningChainData(
       questionId: 'demo',
       title: '推理链',
@@ -64,7 +65,10 @@ class ReasoningChainCard extends StatelessWidget {
           Text(d.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
           if (d.topic != null && d.topic!.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(d.topic!, style: const TextStyle(color: Colors.black54, fontSize: 13)),
+            Text(d.topic!,
+                style: TextStyle(
+                    color: isDark ? Colors.white54 : Colors.black54,
+                    fontSize: 13)),
           ],
           const SizedBox(height: 14),
           ...List.generate(d.steps.length, (index) {
@@ -79,7 +83,13 @@ class ReasoningChainCard extends StatelessWidget {
                       backgroundColor: isLast ? const Color(0xFF20B486) : Theme.of(context).colorScheme.primary,
                       child: Text('${index + 1}', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
                     ),
-                    if (!isLast) Container(width: 2, height: 26, color: Colors.grey.shade300),
+                    if (!isLast)
+                      Container(
+                          width: 2,
+                          height: 26,
+                          color: isDark
+                              ? const Color(0xFF2C2C35)
+                              : Colors.grey.shade300),
                   ],
                 ),
                 const SizedBox(width: 12),

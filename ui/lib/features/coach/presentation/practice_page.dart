@@ -121,54 +121,57 @@ class _PracticePageState extends State<PracticePage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('练习完成！'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              accuracy >= 80 ? Icons.emoji_events : Icons.school,
-              size: 48,
-              color: accuracy >= 80 ? const Color(0xFFFF9F1C) : Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '答对 $_correctCount / $_answeredCount 题',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '正确率 $accuracy%',
-              style: TextStyle(
-                fontSize: 16,
-                color: accuracy >= 80 ? const Color(0xFF20B486) : Colors.orange,
-                fontWeight: FontWeight.w700,
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return AlertDialog(
+          title: const Text('练习完成！'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                accuracy >= 80 ? Icons.emoji_events : Icons.school,
+                size: 48,
+                color: accuracy >= 80 ? const Color(0xFFFF9F1C) : Theme.of(context).colorScheme.primary,
               ),
+              const SizedBox(height: 16),
+              Text(
+                '答对 $_correctCount / $_answeredCount 题',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '正确率 $accuracy%',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: accuracy >= 80 ? const Color(0xFF20B486) : Colors.orange,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                accuracy >= 80 ? '表现优秀，继续保持！' : '继续加油，多练习薄弱知识点！',
+                style: TextStyle(color: isDark ? Colors.white54 : Colors.black54),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // 关闭对话框
+                Navigator.of(context).pop(); // 返回上一页
+              },
+              child: const Text('返回'),
             ),
-            const SizedBox(height: 12),
-            Text(
-              accuracy >= 80 ? '表现优秀，继续保持！' : '继续加油，多练习薄弱知识点！',
-              style: const TextStyle(color: Colors.black54),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // 关闭对话框
+                _loadQuestions(); // 重新加载题目
+              },
+              child: const Text('再来一轮'),
             ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop(); // 关闭对话框
-              Navigator.of(context).pop(); // 返回上一页
-            },
-            child: const Text('返回'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.of(context).pop(); // 关闭对话框
-              _loadQuestions(); // 重新加载题目
-            },
-            child: const Text('再来一轮'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -195,6 +198,7 @@ class _PracticePageState extends State<PracticePage> {
   }
 
   Widget _buildBody() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     if (_loading) {
       return const Center(
         child: Column(
@@ -215,7 +219,7 @@ class _PracticePageState extends State<PracticePage> {
           children: [
             const Icon(Icons.error_outline, size: 48, color: Colors.grey),
             const SizedBox(height: 16),
-            Text(_error!, style: const TextStyle(color: Colors.black54)),
+            Text(_error!, style: TextStyle(color: isDark ? Colors.white54 : Colors.black54)),
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: _loadQuestions,
@@ -252,7 +256,7 @@ class _PracticePageState extends State<PracticePage> {
             children: [
               Text(
                 '已答 $_answeredCount 题',
-                style: const TextStyle(color: Colors.black54, fontSize: 13),
+                style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 13),
               ),
               Text(
                 '正确 $_correctCount 题',

@@ -79,6 +79,7 @@ class _StudyMissionCardState extends State<StudyMissionCard> {
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.primary;
     final m = _mission;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return CoachShellCard(
       padding: const EdgeInsets.all(24),
@@ -99,7 +100,10 @@ class _StudyMissionCardState extends State<StudyMissionCard> {
                 ),
               ),
               const Spacer(),
-              Text('预计 ${m.estimatedMinutes} 分钟', style: const TextStyle(color: Colors.black54, fontSize: 13)),
+              Text('预计 ${m.estimatedMinutes} 分钟',
+                  style: TextStyle(
+                      color: isDark ? Colors.white54 : Colors.black54,
+                      fontSize: 13)),
             ],
           ),
           const SizedBox(height: 22),
@@ -110,7 +114,8 @@ class _StudyMissionCardState extends State<StudyMissionCard> {
           const SizedBox(height: 10),
           Text(
             m.subtitle,
-            style: const TextStyle(color: Colors.black54, fontSize: 14),
+            style: TextStyle(
+                color: isDark ? Colors.white54 : Colors.black54, fontSize: 14),
           ),
           const SizedBox(height: 22),
           ClipRRect(
@@ -118,7 +123,9 @@ class _StudyMissionCardState extends State<StudyMissionCard> {
             child: LinearProgressIndicator(
               minHeight: 10,
               value: m.progress,
-              backgroundColor: Colors.black.withOpacity(0.05),
+              backgroundColor: isDark
+                  ? Colors.white.withOpacity(0.08)
+                  : Colors.black.withOpacity(0.05),
               color: color,
             ),
           ),

@@ -19,10 +19,11 @@ final _htmlTagRe = RegExp(r'<[^>]+>');
 final _lineBreakHtmlRe = RegExp(r'<br\s*/?>', caseSensitive: false);
 final _imgHtmlRe = RegExp(r'<img\b[^>]*>', caseSensitive: false);
 final _softWrapProtectedMarkdownSegmentRe = RegExp(
-  r'(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|<math-(?:inline|block)>[^<]+</math-(?:inline|block)>|!?\[[^\]\n]*\]\([^)]+\)|<[^>\n]+>)',
+  r'(<math-(?:inline|block)>[^<]+</math-(?:inline|block)>|!?\[[^\]\n]*\]\([^)]+\)|<[^>\n]+>)',
 );
 final _longUnbrokenAsciiRunRe =
     RegExp(r'[A-Za-z0-9][A-Za-z0-9._:/?&=%+#,\-]{27,}');
+final _markdownLinkOrImageRe = RegExp(r'(!?)\[([^\]\n]*)\]\(([^)]+)\)');
 final _bareLatexEnvironmentRe = RegExp(
   r'(^|\n)([ \t]*)(\\begin\{([A-Za-z*]+)\}[\s\S]*?\\end\{[A-Za-z*]+\})([ \t]*)(?=\n|$)',
 );
@@ -78,33 +79,44 @@ class MarkdownMathView extends StatelessWidget {
 
     final preparedData = _softWrapMarkdownText(prepareMarkdownMath(data));
 
-    return MarkdownBody(
-      data: preparedData,
-      selectable: selectable,
-      extensionSet: md.ExtensionSet.gitHubFlavored,
-      inlineSyntaxes: [
-        _EncodedMathSyntax('math-inline'),
-        _EncodedMathSyntax('math-block'),
-      ],
-      builders: {
-        'math-inline': _EncodedMathBuilder(
-          display: false,
-          color: effectiveMathColor,
-          fallbackColor: effectiveTextColor,
-          baseFontSize: baseFontSize,
-        ),
-        'math-block': _EncodedMathBuilder(
-          display: true,
-          color: effectiveMathColor,
-          fallbackColor: effectiveTextColor,
-          baseFontSize: baseFontSize,
-          backgroundColor:
-              blockMathBackground ?? effectiveMathColor.withValues(alpha: 0.06),
-          borderColor: blockMathBorderColor ??
-              effectiveMathColor.withValues(alpha: 0.14),
-        ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.of(context).size.width;
+
+        return SizedBox(
+          width: availableWidth,
+          child: MarkdownBody(
+            data: preparedData,
+            selectable: selectable,
+            extensionSet: md.ExtensionSet.gitHubFlavored,
+            inlineSyntaxes: [
+              _EncodedMathSyntax('math-inline'),
+              _EncodedMathSyntax('math-block'),
+            ],
+            builders: {
+              'math-inline': _EncodedMathBuilder(
+                display: false,
+                color: effectiveMathColor,
+                fallbackColor: effectiveTextColor,
+                baseFontSize: baseFontSize,
+              ),
+              'math-block': _EncodedMathBuilder(
+                display: true,
+                color: effectiveMathColor,
+                fallbackColor: effectiveTextColor,
+                baseFontSize: baseFontSize,
+                backgroundColor: blockMathBackground ??
+                    effectiveMathColor.withValues(alpha: 0.06),
+                borderColor: blockMathBorderColor ??
+                    effectiveMathColor.withValues(alpha: 0.14),
+              ),
+            },
+            styleSheet: effectiveStyleSheet,
+          ),
+        );
       },
-      styleSheet: effectiveStyleSheet,
     );
   }
 }
@@ -369,12 +381,25 @@ String _softWrapMarkdownText(String text) {
   for (final match in _softWrapProtectedMarkdownSegmentRe.allMatches(text)) {
     buffer
         .write(_softWrapPlainMarkdownText(text.substring(cursor, match.start)));
-    buffer.write(match.group(0));
+    buffer.write(_softWrapProtectedMarkdownSegment(match.group(0) ?? ''));
     cursor = match.end;
   }
 
   buffer.write(_softWrapPlainMarkdownText(text.substring(cursor)));
   return buffer.toString();
+}
+
+String _softWrapProtectedMarkdownSegment(String segment) {
+  if (segment.startsWith('<math-inline>') ||
+      segment.startsWith('<math-block>')) {
+    return segment;
+  }
+  return segment.replaceAllMapped(_markdownLinkOrImageRe, (match) {
+    final prefix = match.group(1) ?? '';
+    final label = match.group(2) ?? '';
+    final target = match.group(3) ?? '';
+    return '$prefix[${_softWrapPlainMarkdownText(label)}]($target)';
+  });
 }
 
 String _softWrapPlainMarkdownText(String text) {

@@ -52,6 +52,7 @@ class KnowledgeNoteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final d = data ?? const KnowledgeNoteData(
       id: 'demo',
       title: '否定后件式 · 知识笔记',
@@ -67,7 +68,10 @@ class KnowledgeNoteCard extends StatelessWidget {
           Text(d.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
           if (d.topic != null && d.topic!.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(d.topic!, style: const TextStyle(color: Colors.black54, fontSize: 13)),
+            Text(d.topic!,
+                style: TextStyle(
+                    color: isDark ? Colors.white54 : Colors.black54,
+                    fontSize: 13)),
           ],
           const SizedBox(height: 14),
           _Section(title: '定义', content: d.definition),
@@ -153,11 +157,12 @@ class _Section extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F8FC),
+        color: isDark ? const Color(0xFF13131A) : const Color(0xFFF7F8FC),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -165,7 +170,10 @@ class _Section extends StatelessWidget {
         children: [
           Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
           const SizedBox(height: 6),
-          Text(content, style: const TextStyle(height: 1.45, color: Colors.black87)),
+          Text(content,
+              style: TextStyle(
+                  height: 1.45,
+                  color: isDark ? Colors.white87 : Colors.black87)),
         ],
       ),
     );
